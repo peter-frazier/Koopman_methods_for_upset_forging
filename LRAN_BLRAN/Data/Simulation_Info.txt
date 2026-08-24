@@ -1,9 +1,0 @@
-Data collection started: March 27 2026 5:21:36 PM
-Data collection ended March 30 2026 2:11:18 AM
-
-Number of simulations: 1000
-Number of steps per simulation: 100
-Number of failed simulations: 19
-Failed simulations: [ 73  74  75  77  86  91 111 114 117 118 121 122 129 141 147 153 568 685 730]
-Mean simulation time [s]: 205.932
-Std simulation time [s]: 14.363
