@@ -124,11 +124,11 @@ if __name__ == "__main__":
     parser.add_argument('--data_name',    default='Isothermal_Plasticity',
                         help='label used for data in folder')
     parser.add_argument('--train_num', type=int, default=210,
-                        help='fraction of trajectories used for training')
+                        help='number of trajectories used for training')
     parser.add_argument('--valid_num', type=int, default=30,
-                        help='fraction of trajectories used for validation')
+                        help='number of trajectories used for validation')
     parser.add_argument('--test_num',  type=int, default=60,
-                        help='fraction of trajectories used for testing')
+                        help='number of trajectories used for testing')
     parser.add_argument('--shift_frac', type=float, default=0.,
                         help='fraction of trajectories to shift to get different sets')
 
