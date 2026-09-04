@@ -1,9 +1,5 @@
 import sys
-<<<<<<< Updated upstream
 sys.path.insert(0, "/home/frazier.626/Koopman_methods_for_upset_forging") # TODO: change to folder containing jax-fem-checkpoint
-=======
-sys.path.insert(0, "/home/frazier.626/Simple_Koopman_Forging") # TODO: change to folder containing jax-fem-checkpoint
->>>>>>> Stashed changes
 
 import argparse
 import os
@@ -61,11 +57,7 @@ if args.ablation:
 
     for tfac in [0.004, 0.007, 0.013, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8]:
         for sfac in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-<<<<<<< Updated upstream
             file_path = os.path.join(os.path.dirname(__file__), f'metrics_lran_{args.data_name}_ablation_tfac{tfac}_sfac{sfac}_gid1.0_gfwd1.0_glat1.0_geig0.0_seed0', 'train_metrics.mat')
-=======
-            file_path = os.path.join(os.path.dirname(__file__), f'metrics_lran_15-5PH_SS_682C_ablation_tfac{tfac}_sfac{sfac}_gid1.0_gfwd1.0_glat1.0_geig0.0_seed0', 'train_metrics.mat')
->>>>>>> Stashed changes
             if os.path.exists(file_path):
                 metrics = loadmat(file_path)
                 NRMSE = float(metrics['step_NRMSE'])
@@ -83,17 +75,10 @@ if args.ablation:
     NRMSEs = list(dict.values())
 
     fig, ax = plt.subplots(figsize =(10, 7))
-<<<<<<< Updated upstream
     ax.scatter(n_trains, NRMSEs, marker='o', s=200, color='gold')
     ax.set_xlabel('Number of Training Trajectories')
     ax.set_xscale('log')
     ax.set_ylabel('Validation Set NRMSE')
-=======
-    ax.scatter(n_trains, NRMSEs, marker='*', s=500, color='gold', edgecolor='orange')
-    ax.set_xlabel('Number of Training Sims')
-    ax.set_xscale('log')
-    ax.set_ylabel('Testing MSE')
->>>>>>> Stashed changes
     ax.set_title('LRAN Data Ablation Study')
 
     plt.tight_layout()
