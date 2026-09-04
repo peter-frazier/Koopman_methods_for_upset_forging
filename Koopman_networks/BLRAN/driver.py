@@ -200,7 +200,7 @@ if __name__ == "__main__":
     sims    = np.delete(sims, fail_idx)
     n_traj -= n_fail
     n_train = args.train_num
-    n_valid = args.n_valid
+    n_valid = args.valid_num
     n_test  = args.test_num
     n_shift = int(n_traj*args.shift_frac)
     sims    = np.roll(sims, shift=n_shift)
@@ -537,11 +537,12 @@ if __name__ == "__main__":
 
     savemat(os.path.join(metrics_dir, 'train_metrics.mat'), {
         'n_train': n_train, 'n_valid': n_valid, 'n_test': n_test,
+        'train_sims': train_sims,
+        'valid_sims': valid_sims,
+        'test_sims': test_sims,
         'training_time': np.array([train_time], dtype=np.float32),
-        'valid_X_pred': valid_set_stats['X_pred'],
-        'valid_errors': valid_set_stats['errors'],
         'valid_NMSE': valid_set_stats['NMSE'],
-        'valid_NRMSE_sim': valid_set_stats['NRSME_sim'],
+        'valid_NRMSE_sim': valid_set_stats['NRMSE_sim'],
         'valid_NRMSE': valid_set_stats['NRMSE'],
         'step_NRMSE': valid_set_stats['NRMSE'][args.steps],
         **{k: np.array(v, dtype=np.float32) for k, v in history.items()}
