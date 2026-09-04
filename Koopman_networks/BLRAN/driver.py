@@ -123,14 +123,12 @@ if __name__ == "__main__":
     # Data
     parser.add_argument('--data_name',    default='Isothermal_Plasticity',
                         help='label used for data in folder')
-    parser.add_argument('--train_frac', type=float, default=0.7,
+    parser.add_argument('--train_num', type=float, default=210,
                         help='fraction of trajectories used for training')
-    parser.add_argument('--train_num',  type=int,   default=0,
-                            help='number of trajectories used for training. Overwrites train_frac if != 0')
-    parser.add_argument('--test_frac',  type=float, default=0.2,
+    parser.add_argument('--valid_num', type=float, default=30,
+                        help='fraction of trajectories used for validation')
+    parser.add_argument('--test_num',  type=float, default=60,
                         help='fraction of trajectories used for testing')
-    parser.add_argument('--test_num',   type=int,   default=0,
-                            help='number of trajectories used for testing. Overwrites test_frac if != 0')
     parser.add_argument('--shift_frac', type=float, default=0.,
                         help='fraction of trajectories to shift to get different sets')
 
@@ -201,24 +199,15 @@ if __name__ == "__main__":
     sims    = np.arange(n_traj)
     sims    = np.delete(sims, fail_idx)
     n_traj -= n_fail
-
-    if args.train_num:
-        n_train = args.train_num
-    else:
-        n_train = int(n_traj*args.train_frac)
-
-    if args.test_num:
-        n_test = args.test_num
-    else:
-        n_test = int(n_traj*args.test_frac)
-
-    n_valid = n_traj - n_train - n_test
+    n_train = args.train_num
+    n_valid = args.n_valid
+    n_test  = args.test_num
     n_shift = int(n_traj*args.shift_frac)
     sims    = np.roll(sims, shift=n_shift)
 
     test_sims  = sims[:n_test]
     train_sims = sims[n_test:n_test+n_train]
-    valid_sims = sims[n_test+n_train:]
+    valid_sims = sims[n_test+n_train:n_test+n_train+n_valid]
     X_tr, U_tr = X_n[train_sims,:,:], U_n[train_sims,:,:]
     X_va, U_va = X_n[valid_sims,:,:], U_n[valid_sims,:,:]
 

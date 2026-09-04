@@ -1,0 +1,1 @@
+/home/frazier.626/anaconda3/envs/jax-fem-env/bin/python /home/frazier.626/Simple_Koopman_Forging/data_generation.py --data_name 15-5PH_SS_1000C --E 5.8e3 --sig0 70.0 --b 4.3 --Q 80.0
