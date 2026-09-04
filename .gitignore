@@ -1,0 +1,64 @@
+# Ignore everything
+*
+
+# Allow tracking of top-level files 
+!.gitignore
+!README.md
+!LICENSE
+
+# Allow tracking data generation code
+!plasticity.py
+!data_generation.py
+!generate_data.sh
+
+# Allow tracking of top-level subfolders
+!/jax-fem-checkpoint/
+!/Koopman_networks/
+
+# Allow tracking of jex-fem-checkpoint files
+!/jax-fem-checkpoint/**
+
+# Allow tracking of Koopman_networks subfolders
+!/Koopman_networks/*
+
+# Specifically allow tracking of code files and README.md within Koopman_networks subfolders
+!/Koopman_networks/LRAN/create_script.py
+!/Koopman_networks/LRAN/driver.py
+!/Koopman_networks/LRAN/read_dataset.py
+!/Koopman_networks/LRAN/model.py
+!/Koopman_networks/LRAN/train.py
+!/Koopman_networks/LRAN/check_results.py
+!/Koopman_networks/LRAN/figures.py
+!/Koopman_networks/LRAN/README.md
+
+!/Koopman_networks/LRAN-LD/create_script.py
+!/Koopman_networks/LRAN-LD/driver.py
+!/Koopman_networks/LRAN-LD/read_dataset.py
+!/Koopman_networks/LRAN-LD/model.py
+!/Koopman_networks/LRAN-LD/train.py
+!/Koopman_networks/LRAN-LD/check_results.py
+!/Koopman_networks/LRAN-LD/figures.py
+!/Koopman_networks/LRAN-LD/README.md
+
+!/Koopman_networks/BLRAN/create_script.py
+!/Koopman_networks/BLRAN/driver.py
+!/Koopman_networks/BLRAN/read_dataset.py
+!/Koopman_networks/BLRAN/model.py
+!/Koopman_networks/BLRAN/train.py
+!/Koopman_networks/BLRAN/check_results.py
+!/Koopman_networks/BLRAN/figures.py
+!/Koopman_networks/BLRAN/README.md
+
+!/Koopman_networks/BLRAN-LD/create_script.py
+!/Koopman_networks/BLRAN-LD/driver.py
+!/Koopman_networks/BLRAN-LD/read_dataset.py
+!/Koopman_networks/BLRAN-LD/model.py
+!/Koopman_networks/BLRAN-LD/train.py
+!/Koopman_networks/BLRAN-LD/check_results.py
+!/Koopman_networks/BLRAN-LD/figures.py
+!/Koopman_networks/BLRAN-LD/README.md
+
+!/Koopman_networks/DMD/driver.py
+!/Koopman_networks/DMD/read_dataset.py
+!/Koopman_networks/DMD/figures.py
+!/Koopman_networks/DMD/README.md
