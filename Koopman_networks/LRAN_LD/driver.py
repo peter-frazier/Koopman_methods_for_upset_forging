@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0, "/users/PAS3353/peterfrazier/Simple_Koopman_Forging") # TODO: change to folder containing jax-fem-checkpoint
+sys.path.insert(0, "/users/PAS3353/peterfrazier/Koopman_methods_for_upset_forging") # TODO: change to folder containing jax-fem-checkpoint
 
 import argparse
 import os
@@ -123,11 +123,11 @@ if __name__ == "__main__":
     # Data
     parser.add_argument('--data_name',    default='Isothermal_Plasticity',
                         help='label used for data in folder')
-    parser.add_argument('--train_num', type=float, default=210,
+    parser.add_argument('--train_num', type=int, default=210,
                         help='fraction of trajectories used for training')
-    parser.add_argument('--valid_num', type=float, default=30,
+    parser.add_argument('--valid_num', type=int, default=30,
                         help='fraction of trajectories used for validation')
-    parser.add_argument('--test_num',  type=float, default=60,
+    parser.add_argument('--test_num',  type=int, default=60,
                         help='fraction of trajectories used for testing')
     parser.add_argument('--shift_frac', type=float, default=0.,
                         help='fraction of trajectories to shift to get different sets')
@@ -260,7 +260,7 @@ if __name__ == "__main__":
     logger.info(f"Validation set {args.steps}-step NRMSE: {valid_set_stats['NRMSE'][args.steps]:.4f}")
 
     # -- Save per-run metrics -------------------------------------------------------
-
+    
     savemat(os.path.join(metrics_dir, 'train_metrics.mat'), {
         'n_train': n_train, 'n_valid': n_valid, 'n_test': n_test,
         'train_sims': train_sims,
