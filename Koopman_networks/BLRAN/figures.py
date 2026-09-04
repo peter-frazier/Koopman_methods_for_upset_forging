@@ -29,6 +29,8 @@ parser.add_argument('--metrics',      default='metrics',                      he
 parser.add_argument('--ablation',     action='store_true',                    help='plot ablation study')
 
 parser.add_argument('--history',      action='store_true',                    help='plot loss function histories from training')
+parser.add_argument('--structure',    action='store_true',                    help='plot A and B matrices of model, C if applicable')
+parser.add_argument('--eigenvalues',  action='store_true',                    help='plot A matrix eigenvalues')
 
 parser.add_argument('--prediction',   action='store_true',                    help='run model and plot model prediction errors')
 parser.add_argument('--sims',         nargs='+',         type=int,            help='which test sims to make time trace of',
@@ -73,10 +75,10 @@ if args.ablation:
     NRMSEs = list(dict.values())
 
     fig, ax = plt.subplots(figsize =(10, 7))
-    ax.scatter(n_trains, NRMSEs, marker='*', s=500, color='gold', edgecolor='orange')
-    ax.set_xlabel('Number of Training Sims')
+    ax.scatter(n_trains, NRMSEs, marker='o', s=200, color='gold')
+    ax.set_xlabel('Number of Training Trajectories')
     ax.set_xscale('log')
-    ax.set_ylabel('Testing MSE')
+    ax.set_ylabel('Validation Set NRMSE')
     ax.set_title('BLRAN Data Ablation Study')
 
     plt.tight_layout()
