@@ -1,5 +1,9 @@
 import sys
+<<<<<<< Updated upstream
 sys.path.insert(0, "/users/PAS3353/peterfrazier/Koopman_methods_for_upset_forging") # TODO: change to folder containing jax-fem-checkpoint
+=======
+sys.path.insert(0, "/users/PAS3353/peterfrazier/Simple_Koopman_Forging") # TODO: change to folder containing jax-fem-checkpoint
+>>>>>>> Stashed changes
 
 import argparse
 import os
@@ -123,12 +127,19 @@ if __name__ == "__main__":
     # Data
     parser.add_argument('--data_name',    default='Isothermal_Plasticity',
                         help='label used for data in folder')
+<<<<<<< Updated upstream
     parser.add_argument('--train_num', type=int, default=210,
                         help='number of trajectories used for training')
     parser.add_argument('--valid_num', type=int, default=30,
                         help='number of trajectories used for validation')
     parser.add_argument('--test_num',  type=int, default=60,
                         help='number of trajectories used for testing')
+=======
+    parser.add_argument('--train_frac', type=float, default=0.7,
+                        help='fraction of trajectories used for training')
+    parser.add_argument('--test_frac',  type=float, default=0.2,
+                        help='fraction of trajectories used for testing')
+>>>>>>> Stashed changes
     parser.add_argument('--shift_frac', type=float, default=0.,
                         help='fraction of trajectories to shift to get different sets')
 
@@ -199,15 +210,25 @@ if __name__ == "__main__":
     sims    = np.arange(n_traj)
     sims    = np.delete(sims, fail_idx)
     n_traj -= n_fail
+<<<<<<< Updated upstream
     n_train = args.train_num
     n_valid = args.valid_num
     n_test  = args.test_num
+=======
+    n_train = int(n_traj*args.train_frac)
+    n_test  = int(n_traj*args.test_frac)
+    n_valid = n_traj - n_train - n_test
+>>>>>>> Stashed changes
     n_shift = int(n_traj*args.shift_frac)
     sims    = np.roll(sims, shift=n_shift)
 
     test_sims  = sims[:n_test]
     train_sims = sims[n_test:n_test+n_train]
+<<<<<<< Updated upstream
     valid_sims = sims[n_test+n_train:n_test+n_train+n_valid]
+=======
+    valid_sims = sims[n_test+n_train:]
+>>>>>>> Stashed changes
     X_tr, U_tr = X_n[train_sims,:,:], U_n[train_sims,:,:]
     X_va, U_va = X_n[valid_sims,:,:], U_n[valid_sims,:,:]
 
@@ -263,10 +284,16 @@ if __name__ == "__main__":
 
     savemat(os.path.join(metrics_dir, 'train_metrics.mat'), {
         'n_train': n_train, 'n_valid': n_valid, 'n_test': n_test,
+<<<<<<< Updated upstream
         'train_sims': train_sims,
         'valid_sims': valid_sims,
         'test_sims': test_sims,
         'training_time': np.array([train_time], dtype=np.float32),
+=======
+        'training_time': np.array([train_time], dtype=np.float32),
+        'valid_X_pred': valid_set_stats['X_pred'],
+        'valid_errors': valid_set_stats['errors'],
+>>>>>>> Stashed changes
         'valid_NMSE': valid_set_stats['NMSE'],
         'valid_NRMSE_sim': valid_set_stats['NRMSE_sim'],
         'valid_NRMSE': valid_set_stats['NRMSE'],

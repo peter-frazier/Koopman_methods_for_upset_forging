@@ -1,3 +1,7 @@
+<<<<<<< Updated upstream
 /home/frazier.626/anaconda3/envs/jax-fem-env/bin/python /home/frazier.626/Simple_Koopman_Forging/data_generation.py --data_name 15-5PH_SS_682C --E 296.e3 --sig0 330.0 --b 4.8 --Q 250.0
+=======
+/home/frazier.626/anaconda3/envs/jax-fem-env/bin/python /home/frazier.626/Simple_Koopman_Forging/data_generation.py --data_name 15-5PH_SS_682C --E 90.e3 --sig0 330.0 --b 4.8 --Q 250.0
+>>>>>>> Stashed changes
 /home/frazier.626/anaconda3/envs/jax-fem-env/bin/python /home/frazier.626/Simple_Koopman_Forging/data_generation.py --data_name 15-5PH_SS_800C --E 80.e3 --sig0 240.0 --b 4.7 --Q 300.0
 /home/frazier.626/anaconda3/envs/jax-fem-env/bin/python /home/frazier.626/Simple_Koopman_Forging/data_generation.py --data_name 15-5PH_SS_1000C --E 5.8e3 --sig0 70.0 --b 4.3 --Q 80.0

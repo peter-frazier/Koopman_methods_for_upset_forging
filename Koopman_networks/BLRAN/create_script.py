@@ -38,7 +38,11 @@ def create_grid(mode):
             'gamma_fwd':  [0.5, 1.0, 2.0, 4.0],
             'gamma_lin':  [0.5, 1.0, 2.0, 4.0],
             'gamma_eig':  [0.0, 0.5, 1.0, 2.0],
+<<<<<<< Updated upstream
             'train_num':  [210], # TODO: change this to whatever ideal value
+=======
+            'train_frac': [0.7], # TODO: change this to whatever ideal value
+>>>>>>> Stashed changes
             'shift_frac': [0.0]
         }
         SEEDS = list(range(args.n_seeds))
@@ -53,9 +57,14 @@ def create_grid(mode):
             'lr':         1e-4,
             'wd':         1e-4,
             'batch_size': 128,
+<<<<<<< Updated upstream
             'epochs':     500,
             'valid_num':  30, 
             'test_num':   60
+=======
+            'epochs':     1000,
+            'test_frac':  0.2
+>>>>>>> Stashed changes
         }
 
     elif mode == 'ablation':
@@ -65,7 +74,11 @@ def create_grid(mode):
             'gamma_fwd':  [1.0],
             'gamma_lin':  [1.0],
             'gamma_eig':  [0.0],
+<<<<<<< Updated upstream
             'train_num':  [800, 400, 200, 100, 50, 25, 12, 6, 3],
+=======
+            'train_frac': [0.8, 0.4, 0.2, 0.1, 0.05, 0.025, 0.013, 0.007, 0.004],
+>>>>>>> Stashed changes
             'shift_frac': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         }
         SEEDS = list(range(args.n_seeds))
@@ -80,9 +93,14 @@ def create_grid(mode):
             'lr':         1e-4,
             'wd':         1e-4,
             'batch_size': 128,
+<<<<<<< Updated upstream
             'epochs':     500,
             'valid_num':  100, 
             'test_num':   0
+=======
+            'epochs':     1000,
+            'test_frac':  0.0
+>>>>>>> Stashed changes
         }
 
     elif mode == 'cross-valid':
@@ -92,7 +110,11 @@ def create_grid(mode):
             'gamma_fwd':  [1.0],
             'gamma_lin':  [1.0],
             'gamma_eig':  [0.0],
+<<<<<<< Updated upstream
             'train_num':  [210],
+=======
+            'train_frac': [0.7],
+>>>>>>> Stashed changes
             'shift_frac': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         }
         SEEDS = list(range(args.n_seeds))
@@ -107,9 +129,14 @@ def create_grid(mode):
             'lr':         1e-4,
             'wd':         1e-4,
             'batch_size': 128,
+<<<<<<< Updated upstream
             'epochs':     500,
             'valid_num':  30,
             'test_num':   60
+=======
+            'epochs':     1000,
+            'test_frac':  0.2
+>>>>>>> Stashed changes
         }
     return GRID, FIXED, SEEDS
 
@@ -138,7 +165,11 @@ def all_combos(GRID):
 
 
 def _tag(p, seed):
+<<<<<<< Updated upstream
     return (f'{args.data_name}_{args.mode}_tnum{p["train_num"]}_sfac{p["shift_frac"]}_gid{p["gamma_id"]}'
+=======
+    return (f'{args.data_name}_{args.mode}_tfac{p["train_frac"]}_sfac{p["shift_frac"]}_gid{p["gamma_id"]}'
+>>>>>>> Stashed changes
             f'_gfwd{p["gamma_fwd"]}_glat{p["gamma_lin"]}_geig{p["gamma_eig"]}_seed{seed}')
 
 
@@ -198,7 +229,11 @@ if __name__ == '__main__':
 
             sweep_args = (
                 f'--data_name {args.data_name} '
+<<<<<<< Updated upstream
                 f'--train_num {p["train_num"]} --shift_frac {p["shift_frac"]} '
+=======
+                f'--train_frac {p["train_frac"]} --shift_frac {p["shift_frac"]} '
+>>>>>>> Stashed changes
                 f'--gamma_id {p["gamma_id"]} --gamma_fwd {p["gamma_fwd"]} '
                 f'--gamma_lin {p["gamma_lin"]} --gamma_eig {p["gamma_eig"]} '
                 f'--seed {seed} --out_dir {out}'
