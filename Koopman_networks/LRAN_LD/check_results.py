@@ -41,7 +41,7 @@ records   = []
 n_missing = 0
 n_nan     = 0
 
-for p in all_combos():
+for p in all_combos(GRID):
     per_seed = []
     for seed in SEEDS:
         path = os.path.join(result_dir(p, seed), 'train_metrics.mat')
@@ -59,7 +59,9 @@ for p in all_combos():
 
     avg = {k: np.mean(np.stack([d[k] for d in per_seed]), axis=0)
            for k in per_seed[0]}
-    records.append({'params': p, 'n_seeds': len(per_seed), **avg})
+    std = {k+"_std": np.std(np.stack([d[k] for d in per_seed]), axis=0)
+           for k in per_seed[0]}
+    records.append({'params': p, 'n_seeds': len(per_seed), **avg, **std})
 
 if n_missing:
     print(f'Warning: {n_missing} result file(s) missing (jobs still running or failed).')
@@ -82,15 +84,15 @@ _SEP = '-' * (14 + 12 * len(_GRID_KEYS))
 
 def _hdr():
     cols = '  '.join(f'{k:>10}' for k in _GRID_KEYS)
-    return f'{"rank":>4}  {"err":>10}  {cols}  {"seeds":>5}'
+    return f'{"rank":>4}  {"err":>10}  {"std":>10}  {cols}  {"seeds":>5}'
 
 def _row(rank, r):
     p    = r['params']
     cols = '  '.join(f'{p[k]:>10}' for k in _GRID_KEYS)
-    return f'{rank:4d}  {float(r["step_NRMSE"]):10.4f}  {cols}  {r["n_seeds"]:5d}'
+    return f'{rank:4d}  {float(r["step_NRMSE"]):10.4f}  {float(r["step_NRMSE_std"]):10.4f}  {cols}  {r["n_seeds"]:5d}'
 
 # -- Write summary --------------------------------------------------------------
-summary_path = f'lran_ld_{args.mode}_sweep_results.txt'
+summary_path = f'lran_ld_{args.data_name}_sweep_results.txt'
 with open(summary_path, 'w') as fh:
     fh.write(f'LRAN-LD hyperparameter sweep -- {len(records)} combinations evaluated\n')
     fh.write('=' * len(_SEP) + '\n\n')
@@ -99,7 +101,7 @@ with open(summary_path, 'w') as fh:
     for k, v in best['params'].items():
         fh.write(f'  {k:12s} = {v}\n')
     fh.write(f'  step_NRMSE = {min_err:.4f}\n')
-    fh.write(f'  elapsed_time  = {float(best["elapsed_time"]):.1f} s\n\n')
+    fh.write(f'  training_time  = {float(best["training_time"]):.1f} s\n\n')
 
     fh.write(f'Top {len(near_best)} within 20% of best error:\n')
     fh.write(_hdr() + '\n' + _SEP + '\n')
@@ -119,8 +121,8 @@ os.makedirs('best_results', exist_ok=True)
 
 # Averaged metrics across seeds
 savemat('best_results/avg_metrics.mat', {
-    'step_NRMSE': np.atleast_1d(best['step_NRMSE']).astype(np.float32),
-    'elapsed_time':  np.atleast_1d(best['elapsed_time']).astype(np.float32),
+    'step_NRMSE':    np.atleast_1d(best['step_NRMSE']).astype(np.float32),
+    'training_time': np.atleast_1d(best['training_time']).astype(np.float32),
     'loss':          np.atleast_1d(best['loss']).astype(np.float32),
     'loss_id':       np.atleast_1d(best['loss_id']).astype(np.float32),
     'loss_fwd':      np.atleast_1d(best['loss_fwd']).astype(np.float32),
