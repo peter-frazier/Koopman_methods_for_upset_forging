@@ -36,7 +36,7 @@ class WindowDataset(Dataset):
         return xs + us
     
 
-def evaluate_model(model, X, U, sims, return_pred=True, get_errors=True, get_NMSE=True, get_NRMSE=True, device='cpu'):
+def evaluate_model(model, X, U, sims, device='cpu'):
     '''
     INPUTS
     model: PyTorch model to be evaluated
@@ -46,21 +46,15 @@ def evaluate_model(model, X, U, sims, return_pred=True, get_errors=True, get_NMS
     device: run sims on cpu or gpu
 
     OUTPUTS
-    X_pred: predicted states of X (n_traj, traj_len, n_x)        return_pred=false -> returns empty list
-    errors: errors between X and X_pred (n_traj, traj_len, n_x), get_errors=False -> returns empty list
-    NMSE: NMSE per-sim (n_traj, traj_len),                       get_NMSE=False -> returns empty list
-    NRMSE_sim: running NMRSE per-sim (n_traj, traj_len),         get_NRMSE=False -> returns empty list
-    NRMSE: running NMRSE across dataset (traj_len,),             get_NRMSE=False -> returns empty list
+    X_pred: predicted states of X (n_traj, traj_len, n_x)        
+    errors: errors between X and X_pred (n_traj, traj_len, n_x)
+    RE: relative error per-sim (n_traj, traj_len)
+    NRMSE_sim: running NMRSE per-sim (n_traj, traj_len)
+    NRMSE: running NMRSE across dataset (traj_len,)
     '''
-    if get_errors==False and (get_NMSE==True or get_NRMSE==True):
-        logger.info('WARNING: cannot calculate NMSE or NRMSE without errors. Skipping calculation.')
 
     n_traj, traj_len, n_x = X.shape
     X_pred    = np.zeros(shape=X.shape, dtype=np.float32)
-    errors    = []
-    NMSE      = []
-    NRMSE_sim = []
-    NRMSE     = []
 
     with torch.no_grad():
         for i, sim in enumerate(sims):
@@ -85,29 +79,21 @@ def evaluate_model(model, X, U, sims, return_pred=True, get_errors=True, get_NMS
             X_pred[i, :, :] = x_hat.squeeze()
 
     X = X.cpu().detach().numpy()
+    errors = X - X_pred
+    RE = np.linalg.norm(errors, axis=2)/np.linalg.norm(X, axis=2)
 
-    if get_errors:
-        errors = X - X_pred
-
-        if not return_pred:
-            X_pred = []
-
-        if get_NMSE:
-            NMSE = np.linalg.norm(errors, axis=2)/np.linalg.norm(X, axis=2)
-
-        if get_NRMSE:
-            NRMSE_sim = np.zeros(shape=(n_traj, traj_len), dtype=np.float32)
-            NRMSE     = np.zeros(shape=(traj_len,), dtype=np.float32)
-            for i in range(traj_len):
-                vnorm = np.linalg.norm(X[:,:i+1,:], axis=2)      #(n_traj, i)
-                enorm = np.linalg.norm(errors[:,:i+1,:], axis=2) #(n_traj, i)
-                NRMSE_sim[:, i] = (np.sum(enorm**2, axis=1)/np.sum(vnorm**2, axis=1))**0.5 #(n_traj,)
-                NRMSE[i]        = (np.sum(enorm**2)/np.sum(vnorm))**0.5 #(,)
+    NRMSE_sim = np.zeros(shape=(n_traj, traj_len), dtype=np.float32)
+    NRMSE     = np.zeros(shape=(traj_len,), dtype=np.float32)
+    for i in range(traj_len):
+        vnorm = np.linalg.norm(X[:,:i+1,:], axis=2)      #(n_traj, i)
+        enorm = np.linalg.norm(errors[:,:i+1,:], axis=2) #(n_traj, i)
+        NRMSE_sim[:, i] = (np.sum(enorm**2, axis=1)/np.sum(vnorm**2, axis=1))**0.5 #(n_traj,)
+        NRMSE[i]        = (np.sum(enorm**2)/np.sum(vnorm**2))**0.5 #(,)
 
     run_stats = {
         'X_pred': X_pred,
         'errors': errors,
-        'NMSE': NMSE,
+        'RE': RE,
         'NRMSE_sim': NRMSE_sim,
         'NRMSE': NRMSE
     }
@@ -268,7 +254,7 @@ if __name__ == "__main__":
         'valid_sims': valid_sims,
         'test_sims': test_sims,
         'training_time': np.array([train_time], dtype=np.float32),
-        'valid_NMSE': valid_set_stats['NMSE'],
+        'valid_RE': valid_set_stats['RE'],
         'valid_NRMSE_sim': valid_set_stats['NRMSE_sim'],
         'valid_NRMSE': valid_set_stats['NRMSE'],
         'step_NRMSE': valid_set_stats['NRMSE'][args.steps],
