@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0, "/home/frazier.626/Simple_Koopman_Forging") # TODO: change to folder containing jax-fem-checkpoint
+sys.path.insert(0, "/home/frazier.626/Koopman_methods_for_upset_forging") # TODO: change to folder containing jax-fem-checkpoint
 
 import argparse
 import os
@@ -125,8 +125,10 @@ if args.structure or args.eigenvalues or args.prediction:
     args_dict  = model_dict['args']
     n_x        = model_dict['n_x']
     n_u        = model_dict['n_u']
-    test_sims  = model_dict['test_idx']
+    test_sims  = model_dict['test_sims']
     model      = LRAN_LD(n_x, n_u, args_dict['n_z'], args_dict['n_h'], args_dict['activation'], args_dict['alpha'], args_dict['init_scale'])
+    model.load_state_dict(state_dict)
+    model.eval()
 
 
 if args.structure:
@@ -167,7 +169,7 @@ if args.eigenvalues:
     eig = onp.linalg.eigvals(A)
     onp.save(os.path.join(metric_path, 'eigenvalues.npy'), eig)
     maxi = max(onp.max(eig.real), -onp.min(eig.real), onp.max(eig.imag), -onp.min(eig.imag))
-    fig, ax = plt.subplots(8, 10)
+    fig, ax = plt.subplots(figsize=(8, 10))
     circle = plt.Circle((0.,0.),1., color='r', fill=False)
     ax.add_patch(circle)
     plt.scatter(eig.real, eig.imag)
@@ -187,7 +189,7 @@ if args.prediction:
     cell_type = get_meshio_cell_type(ele_type)
     R, H, rect_ratio = 5., 10., 0.4
     circle_mesh, hight_mesh = 5, 20
-    meshio_mesh = cylinder_mesh_gmsh(data_dir=os.path.join(dir, args.data_folder), 
+    meshio_mesh = cylinder_mesh_gmsh(data_dir=data_dir, 
                                     R=R, 
                                     H=H, 
                                     circle_mesh=circle_mesh, 
@@ -199,7 +201,7 @@ if args.prediction:
     # Load and Convert Data
     logger.debug('Loading data...')
 
-    with open(args.meta_file, 'r') as f:
+    with open(meta_file, 'r') as f:
         sim_info = json.load(f)
     traj_len = sim_info['traj_len']
 
@@ -220,7 +222,7 @@ if args.prediction:
 
     X_pred    = test_set_stats['X_pred']
     errors    = test_set_stats['errors']
-    NMSE      = test_set_stats['NMSE']
+    RE        = test_set_stats['RE']
     NRMSE     = test_set_stats['NRMSE']
     NRMSE_sim = test_set_stats['NRMSE_sim']
     worst_sims = onp.argmax(NRMSE_sim, axis=0)
@@ -237,19 +239,20 @@ if args.prediction:
     with h5py.File(os.path.join(metric_path, 'test_metrics.mat'), 'w') as f:
         f.create_dataset('X_pred', data=X_pred)
         f.create_dataset('errors', data=errors)
-        f.create_dataset('NMSE', data=NMSE)
+        f.create_dataset('RE', data=RE)
         f.create_dataset('NRMSE', data=NRMSE)
         f.create_dataset('NRMSE_sim', data=NRMSE_sim)
         f.create_dataset('best_sims', data=best_sims)
         f.create_dataset('worst_sims', data=worst_sims)
 
-        # Make .vtu Files for ParaView
+    # Make .vtu Files for ParaView
     logger.debug('Making testing visualizations...')
     for i, sim in enumerate(test_sims):
         for j in range(traj_len):
             vtk_path = os.path.join(metric_path, f'{args.data_name}_test_sims', f'LRAN_LD_{args.data_name}_test_sim{sim:03d}_step{j:03d}.vtu')
-            cell_states, node_states = unpack_states(X_te[i, j, :])
-            cell_errors, node_errors = unpack_states()
+            err_path = os.path.join(metric_path, f'{args.data_name}_test_errs', f'LRAN_LD_{args.data_name}_errs_sim{sim:03d}_step{j:03d}.vtu')
+            cell_states, node_states = unpack_states(X_pred[i, j, :], 1600)
+            cell_errors, node_errors = unpack_states(errors[i, j, :], 1600)
             cell_dict = [('log strain XX',    cell_states[0,:]),
                          ('log strain XY',    cell_states[1,:]),
                          ('log strain XZ',    cell_states[2,:]),
@@ -261,20 +264,22 @@ if args.prediction:
                          ('Cauchy stress XZ', cell_states[8,:]),
                          ('Cauchy stress YY', cell_states[9,:]),
                          ('Cauchy stress YZ', cell_states[10,:]),
-                         ('Cauchy stress ZZ', cell_states[11,:]),
-                         ('error log strain XX',    onp.abs(cell_errors[0,:])),
-                         ('error log strain XY',    onp.abs(cell_errors[1,:])),
-                         ('error log strain XZ',    onp.abs(cell_errors[2,:])),
-                         ('error log strain YY',    onp.abs(cell_errors[3,:])),
-                         ('error log strain YZ',    onp.abs(cell_errors[4,:])),
-                         ('error log strain ZZ',    onp.abs(cell_errors[5,:])),
-                         ('error Cauchy stress XX', onp.abs(cell_errors[6,:])),
-                         ('error Cauchy stress XY', onp.abs(cell_errors[7,:])),
-                         ('error Cauchy stress XZ', onp.abs(cell_errors[8,:])),
-                         ('error Cauchy stress YY', onp.abs(cell_errors[9,:])),
-                         ('error Cauchy stress YZ', onp.abs(cell_errors[10,:])),
-                         ('error Cauchy stress ZZ', onp.abs(cell_errors[11,:]))]
-            save_sim(dir=vtk_path, fe=fe, cell_dict=cell_dict, node_states=node_states, node_errors=node_errors)
+                         ('Cauchy stress ZZ', cell_states[11,:])]
+            error_cell_dict = [('error log strain XX',    onp.abs(cell_errors[0,:])),
+                               ('error log strain XY',    onp.abs(cell_errors[1,:])),
+                               ('error log strain XZ',    onp.abs(cell_errors[2,:])),
+                               ('error log strain YY',    onp.abs(cell_errors[3,:])),
+                               ('error log strain YZ',    onp.abs(cell_errors[4,:])),
+                               ('error log strain ZZ',    onp.abs(cell_errors[5,:])),
+                               ('error Cauchy stress XX', onp.abs(cell_errors[6,:])),
+                               ('error Cauchy stress XY', onp.abs(cell_errors[7,:])),
+                               ('error Cauchy stress XZ', onp.abs(cell_errors[8,:])),
+                               ('error Cauchy stress YY', onp.abs(cell_errors[9,:])),
+                               ('error Cauchy stress YZ', onp.abs(cell_errors[10,:])),
+                               ('error Cauchy stress ZZ', onp.abs(cell_errors[11,:]))]
+            save_sim(dir=vtk_path, fe=fe, cell_dict=cell_dict, node_states=node_states)
+            save_sim(dir=err_path, fe=fe, cell_dict=error_cell_dict, node_states=node_errors)
+
         logger.info(f'Saved {i+1} of {len(test_sims)}')
     
     # Plot cell/node time traces
@@ -286,10 +291,13 @@ if args.prediction:
     else:
         worst_sim = worst_sims[args_dict['steps']]
         best_sim  = best_sims[args_dict['steps']]
-        sims = [worst_sim, best_sim]
+        sims = [best_sim, worst_sim]
 
-    real_lines = ('solid', 'dashdot')
-    pred_lines = ('dashed', 'dotted')
+    lines  = ('solid', 'dashed')
+    blues  = ('blue', 'lightblue')
+    reds   = ('red', 'pink')
+    greens = ('green', 'lightgreen')
+    blacks = ('black', 'dimgray')
 
     for n in range(len(args.cells)):
         fig, ax = plt.subplots(4, 1, figsize =(10, 12))
@@ -300,22 +308,22 @@ if args.prediction:
             strain_idx = (args.cells[n]+1)*12-7
             disp_idx   = 1600*12 + (args.nodes[n]+1)*3-1
             
-            steps = onp.arange(traj_len - 1)
+            steps = onp.arange(traj_len)
 
-            for i in range(4):
-                ax[i].set_xticks(onp.linspace(0, traj_len-1, 11, endpoint=True))
-                ax[i].set_xticklabels(onp.linspace(0, traj_len-1, 11, endpoint=True, dtype='int32'))
+            for p in range(4):
+                ax[p].set_xticks(onp.linspace(0, traj_len-1, 11, endpoint=True))
+                ax[p].set_xticklabels(onp.linspace(0, traj_len-1, 11, endpoint=True, dtype='int32'))
 
-            ax[0].plot(steps,         X[s, :, stress_idx], color='blue',       linestyle=real_lines[i%2], label=f'Sim {sim} Actual z stress')
-            ax[0].plot(steps,      X_te[s, :, stress_idx], color='lightblue',  linestyle=pred_lines[i%2], label=f'Sim {sim} Predicted z stress')
+            ax[0].plot(steps,   X_te[s, :, stress_idx], color=blues[i%2],  linestyle=lines[0], label=f'Sim {sim} Actual z stress')
+            ax[0].plot(steps, X_pred[s, :, stress_idx], color=blues[i%2],  linestyle=lines[1], label=f'Sim {sim} Predicted z stress')
 
-            ax[1].plot(steps,         X[s, :, strain_idx], color='red',        linestyle=real_lines[i%2], label=f'Sim {sim} Actual z strain')
-            ax[1].plot(steps,      X_te[s, :, strain_idx], color='pink',       linestyle=pred_lines[i%2], label=f'Sim {sim} Predicted z strain')
+            ax[1].plot(steps,   X_te[s, :, strain_idx], color=reds[i%2],   linestyle=lines[0], label=f'Sim {sim} Actual z strain')
+            ax[1].plot(steps, X_pred[s, :, strain_idx], color=reds[i%2],   linestyle=lines[1], label=f'Sim {sim} Predicted z strain')
 
-            ax[2].plot(steps,         X[s, :, disp_idx],   color='green',      linestyle=real_lines[i%2], label=f'Sim {sim} Actual z displacement')
-            ax[2].plot(steps,      X_te[s, :, disp_idx],   color='lightgreen', linestyle=pred_lines[i%2], label=f'Sim {sim} Predicted z displacement')
+            ax[2].plot(steps,   X_te[s, :, disp_idx],   color=greens[i%2], linestyle=lines[0], label=f'Sim {sim} Actual z displacement')
+            ax[2].plot(steps, X_pred[s, :, disp_idx],   color=greens[i%2], linestyle=lines[1], label=f'Sim {sim} Predicted z displacement')
 
-            ax[3].plot(steps[:-1],    U[s, :, :],          color='black', label=f'Sim {sim} Vertical Displacement')
+            ax[3].plot(steps[:-1], U_te[s, :, :],       color=blacks[i%2], linestyle=lines[0], label=f'Sim {sim} Vertical Displacement')
 
             plt.xlabel(f'Step', fontsize=20)
 
@@ -323,25 +331,26 @@ if args.prediction:
                 ax[i].legend()
                 ax[i].minorticks_on()
                 
-            ax[0].set_title(f'Simulation {sim} Cell {args.cells[n]} Node {args.nodes[n]} Tracking', fontsize=20)
+            ax[0].set_title(f'Cell {args.cells[n]} Node {args.nodes[n]} Tracking', fontsize=20)
             ax[0].set_ylabel(f'Stress [MPa]', fontsize=20)
             ax[1].set_ylabel(f'Strain', fontsize=20)
             ax[2].set_ylabel(f'Displacement', fontsize=20)
             ax[3].set_ylabel(f'Input', fontsize=20)
 
             plt.tight_layout()
-            fig.savefig(os.path.join(args.metric_path, f'LRAN_LD Cell {args.cells[n]}, Node {args.nodes[n]} Tracking.png'))
+            fig.savefig(os.path.join(metric_path, f'LRAN_LD Cell {args.cells[n]}, Node {args.nodes[n]} Tracking.png'))
 
-    logger.debug('Plotting NMSE and NRMSE distributions...')
+    logger.debug('Plotting RE and NRMSE distributions...')
     plt.style.use('_mpl-gallery')
 
     colors = ('darkgray', 'purple')
-    types = ('NMSE', 'NRMSE')
+    types = ('Instantaneous', 'Cumulative')
+    errs = ('Relative Error', 'NRMSE')
     
-    for i, data in enumerate([NMSE, NRMSE_sim]):
+    for i, data in enumerate([RE, NRMSE_sim]):
         for step in [args_dict['steps'], traj_len-1]:
             fig, ax = plt.subplots(figsize =(10, 7))
-            bp = ax.boxplot(data, patch_artist=True, positions=list(range(step + 1)),
+            bp = ax.boxplot(data[:, :step+1], patch_artist=True, positions=list(range(step+1)),
                             boxprops     = dict(facecolor=colors[i], color='black'), 
                             capprops     = dict(color='black'),
                             whiskerprops = dict(color='black'),
@@ -352,8 +361,8 @@ if args.prediction:
             ax.set_xticklabels(onp.linspace(0, step, 11, endpoint=True, dtype='int32'))
             plt.minorticks_on()
             plt.xlabel(f'Snapshot Number', fontsize=20)
-            plt.ylabel(f'Relative Error', fontsize=20)
+            plt.ylabel(errs[i], fontsize=20)
             plt.yscale('log')
-            plt.title(f'Testing Errors [{types[i]}]', fontsize=20)
+            plt.title(f'{types[i]} Testing Errors', fontsize=20)
             plt.tight_layout()
             fig.savefig(os.path.join(metric_path, f'Testing Error Propagation {step} steps ({types[i]}).png'))
