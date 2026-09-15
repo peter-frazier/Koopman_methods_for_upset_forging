@@ -233,6 +233,12 @@ if args.prediction:
     logger.info(f'Std test simulation time [s]: {onp.std(times)}')
     logger.info(f'{args_dict['steps']}-step test simulation NRMSE: {NRMSE[args_dict['steps']]}')
 
+    with open(os.path.join(metric_path, 'test_metrics.txt'), 'w') as f:
+        f.write(f'Number of test simulations: {len(times)}\n')
+        f.write(f'Mean test simulations time [s]: {onp.mean(times):.3f}\n')
+        f.write(f'Std test simulations time [s]: {onp.std(times):.3f}\n')
+        f.write(f'{args_dict['steps']}-step test simulation NRMSE: {NRMSE[args_dict['steps']]:.3f}')
+
     # Denormalize Train Data
     logger.debug('Denormalizing data...')
     X_te   = denormalize(X_te,   scale['x_lo'], scale['x_rng'])
