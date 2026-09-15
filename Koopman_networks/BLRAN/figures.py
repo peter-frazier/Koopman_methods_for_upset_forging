@@ -215,8 +215,13 @@ if args.prediction:
     RE        = test_set_stats['RE']
     NRMSE     = test_set_stats['NRMSE']
     NRMSE_sim = test_set_stats['NRMSE_sim']
+    times     = test_set_stats['times']
     worst_sims = onp.argmax(NRMSE_sim, axis=0)
     best_sims  = onp.argmin(NRMSE_sim, axis=0)
+
+    logger.info(f'Avg test simulation time [s]: {onp.mean(times)}')
+    logger.info(f'Std test simulation time [s]: {onp.std(times)}')
+    logger.info(f'{args_dict['steps']}-step test simulation NRMSE: {NRMSE[args_dict['steps']]}')
 
     # Denormalize Train Data
     logger.debug('Denormalizing data...')
@@ -232,6 +237,7 @@ if args.prediction:
         f.create_dataset('RE', data=RE)
         f.create_dataset('NRMSE', data=NRMSE)
         f.create_dataset('NRMSE_sim', data=NRMSE_sim)
+        f.create_dataset('times', data=times)
         f.create_dataset('best_sims', data=best_sims)
         f.create_dataset('worst_sims', data=worst_sims)
 

@@ -51,10 +51,12 @@ def evaluate_model(model, X, U, sims, device='cpu'):
     RE: relative error per-sim (n_traj, traj_len)
     NRMSE_sim: running NMRSE per-sim (n_traj, traj_len)
     NRMSE: running NMRSE across dataset (traj_len,)
+    times: list of simulation runtimes
     '''
 
     n_traj, traj_len, n_x = X.shape
     X_pred    = np.zeros(shape=X.shape, dtype=np.float32)
+    times = []
 
     with torch.no_grad():
         for i, sim in enumerate(sims):
@@ -75,6 +77,7 @@ def evaluate_model(model, X, U, sims, device='cpu'):
 
             end = time.time()
             logger.debug(f'Ran linear simulation {i+1} of {len(sims)} in {end-start} seconds')
+            times.append(end-start)
 
             X_pred[i, :, :] = x_hat.squeeze()
 
@@ -95,7 +98,8 @@ def evaluate_model(model, X, U, sims, device='cpu'):
         'errors': errors,
         'RE': RE,
         'NRMSE_sim': NRMSE_sim,
-        'NRMSE': NRMSE
+        'NRMSE': NRMSE,
+        'times': np.array(times, dtype=np.float32)
     }
     return run_stats
 
