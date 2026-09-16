@@ -110,8 +110,6 @@ if args.history:
     axes[3].set_yscale('log')
     axes[4].plot(epochs, loss_eig, color='purple', label='Stability Loss')
     axes[4].set_title('Stability Loss')
-    if not (loss_eig==0).any():
-        axes[4].set_yscale('log')
     axes[4].set_xlabel('Epoch')
 
     fig.savefig(os.path.join(metric_path, f'training_loss.png'))
@@ -129,6 +127,7 @@ if args.structure or args.eigenvalues or args.prediction:
     model      = LRAN(n_x, n_u, args_dict['n_z'], args_dict['n_h'], args_dict['activation'], args_dict['alpha'], args_dict['init_scale'])
     model.load_state_dict(state_dict)
     model.eval()
+    model.to('cuda')
 
 
 if args.structure:
@@ -144,7 +143,7 @@ if args.structure:
     cbar1.set_label('Magnitude')
     fig1.savefig(os.path.join(metric_path, f'A_matrix.png'))
 
-    fig2, ax2 = plt.subplots(figsize=(4,6))
+    fig2, ax2 = plt.subplots(figsize=(6,6))
     im2 = ax2.imshow(B, cmap='Blues', norm=LogNorm(vmin=1e-6, vmax=max(onp.max(A),onp.max(B))), aspect='auto')
     ax2.set_title('B Matrix Pattern')
     ax2.set_xticks([])
@@ -174,6 +173,7 @@ if args.eigenvalues:
 
 
 if args.prediction:
+    plt.close('all')
     # Prepare Mesh
     ele_type = 'HEX8'
     cell_type = get_meshio_cell_type(ele_type)
@@ -208,7 +208,7 @@ if args.prediction:
     X_te, U_te = X_n[test_sims,:,:] , U_n[test_sims,:,:]
     X_te = torch.from_numpy(X_te)
     U_te = torch.from_numpy(U_te)
-    test_set_stats = evaluate_model(model, X_te, U_te, test_sims)
+    test_set_stats = evaluate_model(model, X_te, U_te, test_sims, device='cuda')
 
     X_pred    = test_set_stats['X_pred']
     errors    = test_set_stats['errors']
@@ -221,13 +221,13 @@ if args.prediction:
 
     logger.info(f'Avg test simulation time [s]: {onp.mean(times)}')
     logger.info(f'Std test simulation time [s]: {onp.std(times)}')
-    logger.info(f'{args_dict['steps']}-step test simulation NRMSE: {NRMSE[args_dict['steps']]}')
+    logger.info(f'{args_dict["steps"]}-step test simulation NRMSE: {NRMSE[args_dict["steps"]]}')
 
     with open(os.path.join(metric_path, 'test_metrics.txt'), 'w') as f:
         f.write(f'Number of test simulations: {len(times)}\n')
-        f.write(f'Mean test simulations time [s]: {onp.mean(times):.3f}\n')
-        f.write(f'Std test simulations time [s]: {onp.std(times):.3f}\n')
-        f.write(f'{args_dict['steps']}-step test simulation NRMSE: {NRMSE[args_dict['steps']]:.3f}')
+        f.write(f'Mean test simulations time [s]: {onp.mean(times):.6f}\n')
+        f.write(f'Std test simulations time [s]: {onp.std(times):.6f}\n')
+        f.write(f'{args_dict["steps"]}-step test simulation NRMSE: {NRMSE[args_dict["steps"]]:.6f}')
 
     # Denormalize Train Data
     logger.debug('Denormalizing data...')
@@ -288,13 +288,6 @@ if args.prediction:
     logger.debug('Plotting reference tracking time traces...')
     assert len(args.cells)==len(args.nodes)
 
-    if not len(args.sims)==0:
-        sims = args.sims
-    else:
-        worst_sim = worst_sims[args_dict['steps']]
-        best_sim  = best_sims[args_dict['steps']]
-        sims = [best_sim, worst_sim]
-
     lines  = ('solid', 'dashed')
     blues  = ('blue', 'lightblue')
     reds   = ('red', 'pink')
@@ -302,45 +295,54 @@ if args.prediction:
     blacks = ('black', 'dimgray')
 
     for n in range(len(args.cells)):
-        fig, ax = plt.subplots(4, 1, figsize =(10, 12))
+        for q in [args_dict['steps'], traj_len-1]:
+            if not len(args.sims)==0:
+                sims = args.sims
+            else:
+                worst_sim = worst_sims[q]
+                best_sim  = best_sims[q]
+                sims = [best_sim, worst_sim]
 
-        for i, s in enumerate(sims):
-            sim        = test_sims[s]
-            stress_idx = (args.cells[n]+1)*12-1
-            strain_idx = (args.cells[n]+1)*12-7
-            disp_idx   = 1600*12 + (args.nodes[n]+1)*3-1
-            
-            steps = onp.arange(traj_len)
+            fig, ax = plt.subplots(4, 1, figsize =(10, 12))
 
-            for i in range(4):
-                ax[i].set_xticks(onp.linspace(0, traj_len-1, 11, endpoint=True))
-                ax[i].set_xticklabels(onp.linspace(0, traj_len-1, 11, endpoint=True, dtype='int32'))
-
-            ax[0].plot(steps,   X_te[s, :, stress_idx], color=blues[i%2],  linestyle=lines[0], label=f'Sim {sim} Actual z stress')
-            ax[0].plot(steps, X_pred[s, :, stress_idx], color=blues[i%2],  linestyle=lines[1], label=f'Sim {sim} Predicted z stress')
-
-            ax[1].plot(steps,   X_te[s, :, strain_idx], color=reds[i%2],   linestyle=lines[0], label=f'Sim {sim} Actual z strain')
-            ax[1].plot(steps, X_pred[s, :, strain_idx], color=reds[i%2],   linestyle=lines[1], label=f'Sim {sim} Predicted z strain')
-
-            ax[2].plot(steps,   X_te[s, :, disp_idx],   color=greens[i%2], linestyle=lines[0], label=f'Sim {sim} Actual z displacement')
-            ax[2].plot(steps, X_pred[s, :, disp_idx],   color=greens[i%2], linestyle=lines[1], label=f'Sim {sim} Predicted z displacement')
-
-            ax[3].plot(steps[:-1], U_te[s, :, :],       color=blacks[i%2], linestyle=lines[0], label=f'Sim {sim} Vertical Displacement')
-
-            plt.xlabel(f'Step', fontsize=20)
-
-            for i in range(4):
-                ax[i].legend()
-                ax[i].minorticks_on()
+            for i, s in enumerate(sims):
+                sim        = test_sims[s]
+                stress_idx = (args.cells[n]+1)*12-1
+                strain_idx = (args.cells[n]+1)*12-7
+                disp_idx   = 1600*12 + (args.nodes[n]+1)*3-1
                 
-            ax[0].set_title(f'Cell {args.cells[n]} Node {args.nodes[n]} Tracking', fontsize=20)
-            ax[0].set_ylabel(f'Stress [MPa]', fontsize=20)
-            ax[1].set_ylabel(f'Strain', fontsize=20)
-            ax[2].set_ylabel(f'Displacement', fontsize=20)
-            ax[3].set_ylabel(f'Input', fontsize=20)
+                steps = onp.arange(q+1)
 
-            plt.tight_layout()
-            fig.savefig(os.path.join(metric_path, f'LRAN Cell {args.cells[n]}, Node {args.nodes[n]} Tracking.png'))
+                for p in range(4):
+                    ax[p].set_xlim(0,q)
+                    ax[p].set_xticks(onp.linspace(0, q, 11, endpoint=True))
+                    ax[p].set_xticklabels(onp.linspace(0, q, 11, endpoint=True, dtype='int32'))
+
+                ax[0].plot(steps,   X_te[s, :q+1, stress_idx], color=blues[i%2],  linestyle=lines[0], label=f'Sim {sim} Actual z stress')
+                ax[0].plot(steps, X_pred[s, :q+1, stress_idx], color=blues[i%2],  linestyle=lines[1], label=f'Sim {sim} Predicted z stress')
+
+                ax[1].plot(steps,   X_te[s, :q+1, strain_idx], color=reds[i%2],   linestyle=lines[0], label=f'Sim {sim} Actual z strain')
+                ax[1].plot(steps, X_pred[s, :q+1, strain_idx], color=reds[i%2],   linestyle=lines[1], label=f'Sim {sim} Predicted z strain')
+
+                ax[2].plot(steps,   X_te[s, :q+1, disp_idx],   color=greens[i%2], linestyle=lines[0], label=f'Sim {sim} Actual z displacement')
+                ax[2].plot(steps, X_pred[s, :q+1, disp_idx],   color=greens[i%2], linestyle=lines[1], label=f'Sim {sim} Predicted z displacement')
+
+                ax[3].plot(steps[:-1], U_te[s, :q, :],       color=blacks[i%2], linestyle=lines[0], label=f'Sim {sim} Vertical Displacement')
+
+                plt.xlabel(f'Step', fontsize=20)
+
+                for i in range(4):
+                    ax[i].legend()
+                    ax[i].minorticks_on()
+                    
+                ax[0].set_title(f'Cell {args.cells[n]} Node {args.nodes[n]} Tracking', fontsize=20)
+                ax[0].set_ylabel(f'Stress [MPa]', fontsize=20)
+                ax[1].set_ylabel(f'Strain', fontsize=20)
+                ax[2].set_ylabel(f'Displacement', fontsize=20)
+                ax[3].set_ylabel(f'Input', fontsize=20)
+
+                plt.tight_layout()
+                fig.savefig(os.path.join(metric_path, f'LRAN Cell {args.cells[n]}, Node {args.nodes[n]} Tracking ({q} steps).png'))
 
     logger.debug('Plotting RE and NRMSE distributions...')
     plt.style.use('_mpl-gallery')
@@ -349,22 +351,25 @@ if args.prediction:
     types = ('Instantaneous', 'Cumulative')
     errs = ('Relative Error', 'NRMSE')
     
-    for i, data in enumerate([RE, NRMSE_sim]):
-        for step in [args_dict['steps'], traj_len-1]:
-            fig, ax = plt.subplots(figsize =(10, 7))
-            bp = ax.boxplot(data[:, :step+1], patch_artist=True, positions=list(range(step+1)),
-                            boxprops     = dict(facecolor=colors[i], color='black'), 
-                            capprops     = dict(color='black'),
-                            whiskerprops = dict(color='black'),
-                            flierprops   = dict(color='black', markeredgecolor='black'),
-                            medianprops  = dict(color='black'),
-                            showfliers = True)
-            ax.set_xticks(onp.linspace(0, step, 11, endpoint=True))
-            ax.set_xticklabels(onp.linspace(0, step, 11, endpoint=True, dtype='int32'))
-            plt.minorticks_on()
-            plt.xlabel(f'Snapshot Number', fontsize=20)
-            plt.ylabel(errs[i], fontsize=20)
-            plt.yscale('log')
-            plt.title(f'{types[i]} Testing Errors', fontsize=20)
-            plt.tight_layout()
-            fig.savefig(os.path.join(metric_path, f'Testing Error Propagation {step} steps ({types[i]}).png'))
+    for scale in ['log', 'linear']:
+        for i, data in enumerate([RE, NRMSE_sim]):
+            for step in [args_dict['steps'], traj_len-1]:
+                fig, ax = plt.subplots(figsize =(10, 7))
+                bp = ax.boxplot(data[:, :step+1], patch_artist=True, positions=list(range(step+1)),
+                                boxprops     = dict(facecolor=colors[i], color='black'), 
+                                capprops     = dict(color='black'),
+                                whiskerprops = dict(color='black'),
+                                flierprops   = dict(color='black', markeredgecolor='black'),
+                                medianprops  = dict(color='black'),
+                                showfliers = True)
+                ax.set_xticks(onp.linspace(0, step, 11, endpoint=True))
+                ax.set_xticklabels(onp.linspace(0, step, 11, endpoint=True, dtype='int32'))
+                plt.minorticks_on()
+                plt.xlabel(f'Snapshot Number', fontsize=20)
+                plt.ylabel(errs[i], fontsize=20)
+                plt.yscale(scale)
+                plt.title(f'{types[i]} Testing Errors', fontsize=20)
+                plt.tight_layout()
+                fig.savefig(os.path.join(metric_path, f'Testing Error Propagation {step} steps ({types[i]}, {scale} scale).png'))
+
+plt.close('all')
