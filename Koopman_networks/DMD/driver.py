@@ -1,219 +1,234 @@
+import sys
+sys.path.insert(0, "/users/PAS3353/peterfrazier/Koopman_methods_for_upset_forging") # TODO: change to folder containing jax-fem-checkpoint
+
 import argparse
 import os
+import jax
 import time
 import h5py
 import json
 import numpy as np
-import torch
-from torch.utils.data import Dataset, TensorDataset, DataLoader
+import jax.numpy as jnp
 from scipy.io import savemat
 from jax_fem_checkpoint import logger
-import matplotlib.pyplot as plt
 
-from model import BLRAN
-from train import train as train_blran
-from read_dataset import (generate_pendulum, load_from_mat,
-                           normalize, denormalize, make_windows)
+from read_dataset import normalize
 
-# -- Arguments -----------------------------------------------------------------
-parser = argparse.ArgumentParser(description='BLRAN -- Bilinear Recurrent Autoencoder')
 
-# Data
-parser.add_argument('--data_folder',default=os.path.join(os.path.dirname((os.path.dirname(__file__))), 'Data'),
-                    help='folder containing .mat file of data')
-parser.add_argument('--dataset',    default='pendulum',
-                    help='"pendulum" or path to a .mat file')
-parser.add_argument('--x_key',      default='X',   help='key for states in .mat file')
-parser.add_argument('--u_key',      default='U',   help='key for controls in .mat file')
-parser.add_argument('--n_traj',     type=int,   default=100,
-                    help='number of trajectories to generate (pendulum only)')
-parser.add_argument('--traj_len',   type=int,   default=200,
-                    help='number of control steps per trajectory (pendulum only)')
-parser.add_argument('--train_frac', type=float, default=0.8,
-                    help='fraction of trajectories used for training')
+def evaluate_model(A, B, X, U, sims):
+    '''
+    INPUTS
+    model: PyTorch model to be evaluated
+    X: state dataset
+    U: input dataset
+    sims: simulated trajectory number
+    device: run sims on cpu or gpu
 
-# Architecture
-parser.add_argument('--n_z',        type=int,   default=8,
-                    help='latent (Koopman) dimension')
-parser.add_argument('--n_h',        type=int,   default=2,
-                    help='number of hidden layers')
-parser.add_argument('--activation', type=str,   default='Tanh',
-                    help='network width multiplier (hidden layer width = 16*alpha)')
-parser.add_argument('--alpha',      type=int,   default=4,
-                    help='network width multiplier (hidden layer width = 16*alpha)')
-parser.add_argument('--init_scale', type=float, default=0.99,
-                    help='initial spectral radius of A')
+    OUTPUTS
+    X_pred: predicted states of X (n_traj, traj_len, n_x)        
+    errors: errors between X and X_pred (n_traj, traj_len, n_x)
+    RE: relative error per-sim (n_traj, traj_len)
+    NRMSE_sim: running NMRSE per-sim (n_traj, traj_len)
+    NRMSE: running NMRSE across dataset (traj_len,)
+    times: list of simulation runtimes
+    '''
 
-# Training
-parser.add_argument('--steps',      type=int,   default=8,
-                    help='multi-step prediction horizon during training')
-parser.add_argument('--epochs',     type=int,   default=500)
-parser.add_argument('--batch_size', type=int,   default=128)
-parser.add_argument('--lr',         type=float, default=1e-3)
-parser.add_argument('--wd',         type=float, default=1e-4)
-parser.add_argument('--gradclip',   type=float, default=0.05)
-parser.add_argument('--gamma_id',   type=float, default=1.0)
-parser.add_argument('--gamma_fwd',  type=float, default=1.0)
-parser.add_argument('--gamma_lin',  type=float, default=1.0)
-parser.add_argument('--gamma_eig',  type=float, default=0.0,
-                    help='weight on eigenvalue stability loss (0 = disabled)')
+    @jax.jit
+    def linear_simulation(A, B, x0, us):
+        x_hat = jnp.zeros(shape=(x0.shape[0], us.shape[1]+1), dtype=jnp.float32)
+        x_hat = x_hat.at[:, 0].set(x0)
+        x_now = x0
 
-parser.add_argument('--seed',       type=int,   default=0)
-parser.add_argument('--device',     type=str,   default='cpu')
-parser.add_argument('--out_dir',    type=str,   default=os.path.join(os.path.dirname(__file__), 'metrics'),
-                    help='directory to save per-run metrics (empty = skip)')
-parser.add_argument('--no_plot',    action='store_true',
-                    help='suppress figure output (use on HPC without display)')
-args = parser.parse_args()
+        for i, disp in enumerate(us.T):
+            x_next = A@x_now + B@disp
+            x_hat = x_hat.at[:,i+1].set(x_next)
+            x_now = x_next
 
-torch.manual_seed(args.seed)
-np.random.seed(args.seed)
+        return x_hat
 
-# -- Data ----------------------------------------------------------------------
-if args.dataset == 'pendulum':
-    logger.debug('Generating data...')
-    X, U = generate_pendulum(n_traj=args.n_traj, T=args.traj_len, seed=args.seed)
-elif args.dataset == 'Isothermal_Plasticity.mat':
-    logger.debug("Loading data...")
-    file = os.path.join(args.data_folder, args.dataset)
+    n_traj, traj_len, n_x = X.shape
+    X_pred    = np.zeros(shape=X.shape, dtype=np.float32)
+    times = []
+
+    A = jnp.asarray(A)
+    B = jnp.asarray(B)
+
+    for i, sim in enumerate(sims):
+        start = time.time()
+
+        x0 = jnp.asarray(X[i, :1, :].T) # (n_x, 1)
+        us = jnp.asarray(U[i, : , :].T) # (1, traj_len - 1)
+
+        x_hat = linear_simulation(A, B, x0, us)
+
+        end = time.time()
+        logger.debug(f'Ran linear simulation {i+1} of {len(sims)} in {end-start} seconds')
+        times.append(end-start)
+
+        X_pred[i, :, :] = x_hat
+
+    X = X
+    errors = X - X_pred
+    RE = np.linalg.norm(errors, axis=2)/np.linalg.norm(X, axis=2)
+
+    NRMSE_sim = np.zeros(shape=(n_traj, traj_len), dtype=np.float32)
+    NRMSE     = np.zeros(shape=(traj_len,), dtype=np.float32)
+    for i in range(traj_len):
+        vnorm = np.linalg.norm(X[:,:i+1,:], axis=2)      #(n_traj, i)
+        enorm = np.linalg.norm(errors[:,:i+1,:], axis=2) #(n_traj, i)
+        NRMSE_sim[:, i] = (np.sum(enorm**2, axis=1)/np.sum(vnorm**2, axis=1))**0.5 #(n_traj,)
+        NRMSE[i]        = (np.sum(enorm**2)/np.sum(vnorm**2))**0.5 #(,)
+
+    run_stats = {
+        'X_pred': X_pred,
+        'errors': errors,
+        'RE': RE,
+        'NRMSE_sim': NRMSE_sim,
+        'NRMSE': NRMSE,
+        'times': np.array(times, dtype=np.float32)
+    }
+    return run_stats
+
+
+if __name__ == "__main__":
+
+    # -- Arguments -----------------------------------------------------------------
+
+    parser = argparse.ArgumentParser(description='DMDc -- controlled dynamical systems')
+
+    # Data
+    parser.add_argument('--data_name',    default='Isothermal_Plasticity',
+                        help='label used for data in folder')
+    parser.add_argument('--train_num', type=int, default=210,
+                        help='number of trajectories used for training')
+    parser.add_argument('--valid_num', type=int, default=30,
+                        help='number of trajectories used for validation')
+    parser.add_argument('--test_num',  type=int, default=60,
+                        help='number of trajectories used for testing')
+    parser.add_argument('--shift_frac', type=float, default=0.,
+                        help='fraction of trajectories to shift to get different sets')
+
+    parser.add_argument('--seed',       type=int,   default=0)
+    parser.add_argument('--device',     type=str,   default='cpu')
+    parser.add_argument('--out_dir',    type=str,   default='metrics',
+                        help='directory to save per-run metrics (empty = skip)')
+
+    args = parser.parse_args()
+
+    np.random.seed(args.seed)
+
+    # -- Data ----------------------------------------------------------------------
 
     # Load necessary info
-    with open(os.path.join(args.data_folder, 'Simulation_Info.json'), 'r') as f:
+    logger.debug("Loading data...")
+    data_dir  = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
+    data_file = os.path.join(data_dir, args.data_name+'.mat')
+    meta_file = os.path.join(data_dir, args.data_name+'.json')
+
+    with open(meta_file, 'r') as f:
         sim_info = json.load(f)
-    num_sim = sim_info['num_sim']
-    num_steps = sim_info['num_steps']
-    train_sims = np.array(sim_info['train_idx'])
-    test_sims = np.array(sim_info['test_idx'])
-    with h5py.File(file, 'r') as f:
-        X = f[args.x_key][:] 
-        U = f[args.u_key][:]
-else:
-    X, U = load_from_mat(os.path.join(args.data_folder, args.dataset), x_key=args.x_key, u_key=args.u_key)
+    n_traj   = sim_info['n_traj']
+    traj_len = sim_info['traj_len']
+    fail_idx = sim_info['fail_idx']
+    n_fail   = len(fail_idx)
 
-_, _, n_x = X.shape
-_, _, n_u = U.shape
+    with h5py.File(data_file, 'r') as f:
+        X = f['X'][:] 
+        U = f['U'][:]
 
-logger.debug('Normalizing data on [-1, 1]...')
-X_n, U_n, scale = normalize(X, U, args.dataset)
+    _, _, n_x = X.shape
+    _, _, n_u = U.shape
 
-logger.debug('Splitting testing/training sets...')
-if args.dataset == 'Isothermal_Plasticity.mat':
-    n_train    = int(len(train_sims)*args.train_frac/0.8)
-    train_sims = train_sims[:n_train]
+    # Normalize
+    logger.debug('Normalizing data on [-1, 1]...')
+    X_n, U_n, scale = normalize(X, U)
+
+    # Split training/testing
+    logger.debug('Splitting testing/training sets...')
+    sims    = np.arange(n_traj)
+    sims    = np.delete(sims, fail_idx)
+    n_traj -= n_fail
+    n_train = args.train_num
+    n_valid = args.valid_num
+    n_test  = args.test_num
+    n_shift = int(n_traj*args.shift_frac)
+    sims    = np.roll(sims, shift=n_shift)
+
+    test_sims  = sims[:n_test]
+    train_sims = sims[n_test:n_test+n_train]
+    valid_sims = sims[n_test+n_train:n_test+n_train+n_valid]
     X_tr, U_tr = X_n[train_sims,:,:], U_n[train_sims,:,:]
-    X_te, U_te = X_n[test_sims,:,:] , U_n[test_sims,:,:]
-else:  
-    n_train      = int(args.train_frac * len(X_n))
-    X_tr, U_tr   = X_n[:n_train], U_n[:n_train]
-    X_te, U_te   = X_n[n_train:], U_n[n_train:]
+    X_va, U_va = X_n[valid_sims,:,:], U_n[valid_sims,:,:]
 
-logger.debug('Forming dataset for PyTorch...')
-if args.dataset == 'Isothermal_Plasticity.mat':
-    class WindowDataset(Dataset):
-        def __init__(self, X, U, steps):
-            self.X = X # (n_traj, T, n_x)
-            self.U = U # (n_traj, T-1, n_u)
-            self.steps = steps
+    # -- Train ---------------------------------------------------------------------
 
-            self.n_traj, self.traj_len, _ = X.shape
+    # Implementation of Koopman lifting
+    def lift_function(data):
+        lift_data = data # identity lifting function
+        return lift_data
 
-        def __len__(self):
-            return self.n_traj * (self.traj_len - self.steps)
+    def dataset_for_DMD(arr):
+        _, _, dim = arr.shape
+        arr = np.transpose(arr) # dim, traj_length - 1, n_traj
+        arr = np.reshape(arr, shape=(dim, -1), order='C')
+        return arr
 
-        def __getitem__(self, idx):
-            traj_id = idx // (self.traj_len - self.steps)
-            step_id = idx % (self.traj_len - self.steps)
+    def DMDc_model(X, Y, U):
+        n_traj, _, n_x = X.shape # n_traj, traj_length - 1, dim
 
-            xs = [self.X[traj_id, step_id+p, :] for p in range(self.steps + 1)]
-            us = [self.U[traj_id, step_id+p, :] for p in range(self.steps)]
-            return xs + us
-        
-    X_tr = torch.from_numpy(X_tr)
-    U_tr = torch.from_numpy(U_tr)
-    dataset = WindowDataset(X_tr, U_tr, args.steps)
-else:
-    windows = make_windows(X_tr, U_tr, args.steps)
-    dataset = TensorDataset(*[torch.from_numpy(w) for w in windows])
+        logger.info('Lifting data...')
+        X_lift = lift_function(X)
+        Y_lift = lift_function(Y)
+        n_z, _ = X_lift.shape
 
-loader  = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
+        X_lift = dataset_for_DMD(X_lift)
+        Y_lift = dataset_for_DMD(Y_lift)
+        U      = dataset_for_DMD(U)
 
-logger.info(f'Train trajectories: {n_train}  |  Test trajectories: {len(X_te)}')
-logger.info(f'Windows per epoch:  {len(dataset)}  |  Batches per epoch: {len(loader)}')
+        logger.info('Condensing data...')
+        G = np.vstack((X_lift, U))@np.vstack((X_lift, U)).T
+        V = Y_lift@np.vstack((X_lift, U)).T
 
-# -- Model ---------------------------------------------------------------------
-model   = BLRAN(n_x, n_u, args.n_z, args.n_h, args.activation, args.alpha, args.init_scale)
-n_param = sum(p.numel() for p in model.parameters())
-logger.info(f'BLRAN | n_x={n_x}  n_u={n_u}  n_z={args.n_z}  n_h={args.n_h}  alpha={args.alpha} '
-      f'(width={16*args.alpha})  activation={args.activation} | B shape=({args.n_z}, {args.n_z * n_u}) | params={n_param:,}')
+        logger.info('Finding best-fit operators')
+        M = V@np.linalg.pinv(G, rcond=1e-6)
 
-# -- Train ---------------------------------------------------------------------
-t0 = time.time()
-history = train_blran(
-    model, loader, args.epochs,
-    lr=args.lr, wd=args.wd, gradclip=args.gradclip,
-    gamma_id=args.gamma_id, gamma_fwd=args.gamma_fwd,
-    gamma_lin=args.gamma_lin, gamma_eig=args.gamma_eig,
-    device=args.device, print_every=10,
-)
-elapsed = time.time() - t0
+        A = M[:, :n_z]
+        B = M[:, n_z:]
 
-if args.out_dir:
-    os.makedirs(args.out_dir, exist_ok=True)
-model_path = os.path.join(args.out_dir, 'model.pt') if args.out_dir else 'blran_model.pt'
-torch.save({'state_dict': model.state_dict(), 'args': vars(args),
-            'scale': scale, 'n_x': n_x, 'n_u': n_u}, model_path)
-logger.info(f'Model saved -> {model_path}')
+        return A, B
 
-# -- Evaluate: roll out a test trajectory from its initial condition -----------
-model.eval()
-with torch.no_grad():
-    x0      = torch.from_numpy(X_te[0, :1])           # (1, n_x)
-    us      = torch.from_numpy(U_te[0]).unsqueeze(0)  # (1, T, n_u)
-    z0      = model.encoder(x0)
-    z_preds = model.rollout(z0, us)
-    x_hat   = torch.cat(
-        [x0] + [model.decoder(z) for z in z_preds], dim=0
-    ).numpy()                                          # (T+1, n_x)
+    t0 = time.time()
 
-x_true = X_te[0]                                      # (T+1, n_x) normalized
-T_eval  = min(len(x_hat), len(x_true))
-x_hat   = x_hat[:T_eval]
-x_true  = x_true[:T_eval]
+    X_dict = X_tr[train_sims, :-1, :]
+    Y_dict = X_tr[train_sims, 1:, :]
+    U_dict = U_tr[train_sims, :, :]
+    A, B = DMDc_model(X_dict, Y_dict, U_dict)
 
-err = (np.linalg.norm(x_hat - x_true, axis=1) /
-       (np.linalg.norm(x_true, axis=1) + 1e-8))
+    train_time = time.time() - t0
 
-logger.info(f'Mean relative error: {err.mean():.4f}  |  Elapsed: {elapsed:.1f} s')
+    metrics_dir = os.path.join(os.path.dirname(__file__), args.out_dir)
+    os.makedirs(metrics_dir, exist_ok=True)
+    model_path = os.path.join(metrics_dir, 'model.npz')
+    np.savez(model_path, A=A, B=B, n_x=n_x, n_u=n_u,
+             train_sims=train_sims, valid_sims=valid_sims, test_sims=test_sims)
+    logger.info(f'Model saved -> {model_path}  |  Training Time: {train_time:.1f} s')
 
-# -- Save per-run metrics ------------------------------------------------------
-if args.out_dir:
-    savemat(os.path.join(args.out_dir, 'metrics.mat'), {
-        'test_err_mean': np.array([err.mean()], dtype=np.float32),
-        'test_err_ts':   err.astype(np.float32),
-        'elapsed_time':  np.array([elapsed],    dtype=np.float32),
-        **{k: np.array(v, dtype=np.float32) for k, v in history.items()}
-    })
-    logger.debug(f'Metrics saved -> {args.out_dir}/metrics.mat')
+    # -- Evaluate ------------------------------------------------------------------
 
-# -- Plots ---------------------------------------------------------------------
-if not args.no_plot:
-    x_hat_phys  = denormalize(x_hat,  scale['x_lo'], scale['x_rng'])
-    x_true_phys = denormalize(x_true, scale['x_lo'], scale['x_rng'])
+    valid_set_stats = evaluate_model(A, B, X_va, U_va, valid_sims)
+    logger.info(f"Validation set {args.steps}-step NRMSE: {valid_set_stats['NRMSE'][args.steps]:.4f}")
 
-    fig, axes = plt.subplots(3, 1, figsize=(9, 7), sharex=True)
-
-    axes[0].plot(x_true_phys[:, 0], label='true')
-    axes[0].plot(x_hat_phys[:, 0], '--', label='BLRAN')
-    axes[0].set_ylabel('theta (rad)'); axes[0].legend()
-    axes[0].set_title("theta'' = -(g/l) sin(theta) + u")
-
-    axes[1].plot(x_true_phys[:, 1], label='true')
-    axes[1].plot(x_hat_phys[:, 1], '--', label='BLRAN')
-    axes[1].set_ylabel("theta' (rad/s)"); axes[1].legend()
-
-    axes[2].semilogy(err)
-    axes[2].set_ylabel('relative error'); axes[2].set_xlabel('time step')
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(args.out_dir, 'blran_prediction.png'), dpi=150)
-    plt.show()
+    # -- Save per-run metrics -------------------------------------------------------
+    
+    savemat(os.path.join(metrics_dir, 'train_metrics.mat'), {
+        'n_train': n_train, 'n_valid': n_valid, 'n_test': n_test,
+        'train_sims': train_sims,
+        'valid_sims': valid_sims,
+        'test_sims': test_sims,
+        'training_time': np.array([train_time], dtype=np.float32),
+        'valid_RE': valid_set_stats['RE'],
+        'valid_NRMSE_sim': valid_set_stats['NRMSE_sim'],
+        'valid_NRMSE': valid_set_stats['NRMSE'],
+        'step_NRMSE': valid_set_stats['NRMSE'][args.steps]}
+    )
+    logger.debug(f'Metrics saved -> {metrics_dir}/train_metrics.mat')

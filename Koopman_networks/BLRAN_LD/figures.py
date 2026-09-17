@@ -241,6 +241,7 @@ if args.prediction:
 
     # Denormalize Train Data
     logger.debug('Denormalizing data...')
+    U_te   = denormalize(U_te,   scale['u_lo'], scale['u_rng'])
     X_te   = denormalize(X_te,   scale['x_lo'], scale['x_rng'])
     X_pred = denormalize(X_pred, scale['x_lo'], scale['x_rng'])
     errors = denormalize(errors, scale['x_lo'], scale['x_rng'])

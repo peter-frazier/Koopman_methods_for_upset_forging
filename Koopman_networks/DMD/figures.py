@@ -1,76 +1,118 @@
+import sys
+sys.path.insert(0, "/home/frazier.626/Koopman_methods_for_upset_forging") # TODO: change to folder containing jax-fem-checkpoint
+
 import argparse
 import os
 import h5py
 import json
-import torch
 import numpy as onp
 import matplotlib.pyplot as plt
-from read_dataset import denormalize
-from jax_fem.generate_mesh import cylinder_mesh_gmsh, get_meshio_cell_type, Mesh
+from matplotlib.colors import LogNorm
+from read_dataset import normalize, denormalize
+from driver import evaluate_model
+from jax_fem_checkpoint.generate_mesh import cylinder_mesh_gmsh, get_meshio_cell_type, Mesh
 from jax_fem_checkpoint import logger
-from jax_fem_checkpoint.utils import save_sol
+from jax_fem_checkpoint.funcs import save_sim, unpack_states
 from jax_fem_checkpoint.fe_new import FiniteElement
 
 
-parser = argparse.ArgumentParser(description='Retrieve Test Error Propagation from model')
+parser = argparse.ArgumentParser(description='DMDc figures')
 
 # Folders
-parser.add_argument('--data_folder',  default='Data',                         help='folder containing data')
-parser.add_argument('--dataset',      default='Isothermal_Plasticity.mat',    help='data being processed')
-parser.add_argument('--test'   ,      default='linear_test.npy',              help='numpy file of model test simulations')
+parser.add_argument('--data_name',    default='Isothermal_Plasticity',        help='data being processed')
 parser.add_argument('--metrics',      default='metrics',                      help='folder containing data metrics')
 
 # Visuals Details
-parser.add_argument('--paraview',     action='store_true',                    help='make vtu files of data for paraview')
-parser.add_argument('--ablation',     action='store_true',                    help='make plot of ablation study')
-parser.add_argument('--trace',        action='store_true',                    help='make time trace visuals')
-parser.add_argument('--sims',         nargs='+',         type=int,            help='which test sims to make time trace of')
-parser.add_argument('--cells',        nargs='+',         type=int,            help='which mesh cells to make time trace of')
-parser.add_argument('--nodes',        nargs='+',         type=int,            help='which mesh nodes to make time trace of')
+parser.add_argument('--structure',    action='store_true',                    help='plot A and B matrices of model, C if applicable')
+parser.add_argument('--eigenvalues',  action='store_true',                    help='plot A matrix eigenvalues')
+
+parser.add_argument('--prediction',   action='store_true',                    help='run model and plot model prediction errors')
+parser.add_argument('--sims',         nargs='+',         type=int,            help='which test sims to make time trace of',
+                    default=[])
+parser.add_argument('--cells',        nargs='+',         type=int,            help='which mesh cells to make time trace of',
+                    default=[0, 150, 179, 710])
+parser.add_argument('--nodes',        nargs='+',         type=int,            help='which mesh nodes to make time trace of',
+                    default=[0, 1118, 54, 159])
+
+parser.add_argument('--steps',        type=int,   default=10)
 
 args = parser.parse_args()
 
 
 # Make Paths
-dir        = os.path.dirname(os.path.dirname(__file__))
-folder     = os.path.dirname(__file__)
-truth_path = os.path.join(dir, args.data_folder, args.dataset)
-test_path  = os.path.join(folder, args.metrics, args.test)
-model_path = os.path.join(folder, args.metrics, 'model.pt')
+data_dir    = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
+data_file   = os.path.join(data_dir, args.data_name+'.mat')
+meta_file   = os.path.join(data_dir, args.data_name+'.json')
+metric_path = os.path.join(os.path.dirname(__file__), args.metrics)
+model_file  = os.path.join(metric_path, 'model.npz')
+train_file  = os.path.join(metric_path, 'train_metrics.mat')
 
 
-def unpack_states(state):
-    num_cells   = 1600
-    cell_vector = state[:num_cells*12]
-    node_vector = state[num_cells*12:]
-
-    cell_states = cell_vector.reshape((12,-1), order='F')
-    node_states = node_vector.reshape((-1, 3), order='C')
-    return cell_states, node_states
-
-
-def save_sim(dir, fe, cell_states, node_states):
-    save_sol(fe, node_states, dir, cell_infos=[('e11', cell_states[0,:]),
-                                               ('e12', cell_states[1,:]),
-                                               ('e13', cell_states[2,:]),
-                                               ('e22', cell_states[3,:]),
-                                               ('e23', cell_states[4,:]),
-                                               ('e33', cell_states[5,:]),
-                                               ('s11', cell_states[6,:]),
-                                               ('s12', cell_states[7,:]),
-                                               ('s13', cell_states[8,:]),
-                                               ('s22', cell_states[9,:]),
-                                               ('s23', cell_states[10,:]),
-                                               ('s33', cell_states[11,:])])
+if args.structure or args.eigenvalues or args.prediction:
+    # Load model
+    logger.debug('Loading model...')
+    with onp.load(model_file) as model:
+        A          = model['A']
+        B          = model['B']
+        n_x        = model['n_x']
+        n_u        = model['n_u']
+        train_sims = model['test_sims']
+        valid_sims = model['test_sims']
+        test_sims  = model['test_sims']
 
 
-if args.paraview or args.trace:
+if args.structure:
+
+    #TODO: Change a and b matrices from PyTorch
+
+    A_abs = onp.abs(A)
+    B_abs = onp.abs(A)
+
+    fig1, ax1 = plt.subplots(figsize=(8,6))
+    im1 = ax1.imshow(A_abs, cmap='Blues', norm=LogNorm(vmin=1e-6, vmax=max(onp.max(A_abs),onp.max(B_abs))))
+    ax1.set_title('A Matrix Pattern')
+    ax1.set_xticks([])
+    ax1.set_yticks([])
+    cbar1 = fig1.colorbar(im1)
+    cbar1.set_label('Magnitude')
+    fig1.savefig(os.path.join(metric_path, f'A_matrix.png'))
+
+    fig2, ax2 = plt.subplots(figsize=(6,6))
+    im2 = ax2.imshow(B_abs, cmap='Blues', norm=LogNorm(vmin=1e-6, vmax=max(onp.max(A_abs),onp.max(B_abs))), aspect='auto')
+    ax2.set_title('B Matrix Pattern')
+    ax2.set_xticks([])
+    ax2.set_yticks([])
+    cbar2 = fig2.colorbar(im2)
+    cbar2.set_label('Magnitude')
+    fig2.savefig(os.path.join(metric_path, f'B_matrix.png'))
+
+
+if args.eigenvalues:
+    eig = onp.linalg.eigvals(A)
+    onp.save(os.path.join(metric_path, 'eigenvalues.npy'), eig)
+    maxi = max(onp.max(eig.real), -onp.min(eig.real), onp.max(eig.imag), -onp.min(eig.imag))
+    fig, ax = plt.subplots(figsize=(8, 10))
+    circle = plt.Circle((0.,0.),1., color='r', fill=False)
+    ax.add_patch(circle)
+    plt.scatter(eig.real, eig.imag)
+    plt.xlim(-maxi,maxi)
+    plt.ylim(-maxi,maxi)
+    plt.grid()
+    plt.xlabel('Real')
+    plt.ylabel('Imag')
+    plt.title('A matrix eigenvalues')
+    plt.tight_layout()
+    fig.savefig(os.path.join(metric_path, f'eigenvalues.png'))
+
+
+if args.prediction:
+    plt.close('all')
     # Prepare Mesh
     ele_type = 'HEX8'
     cell_type = get_meshio_cell_type(ele_type)
     R, H, rect_ratio = 5., 10., 0.4
     circle_mesh, hight_mesh = 5, 20
-    meshio_mesh = cylinder_mesh_gmsh(data_dir=os.path.join(dir, args.data_folder), 
+    meshio_mesh = cylinder_mesh_gmsh(data_dir=data_dir, 
                                     R=R, 
                                     H=H, 
                                     circle_mesh=circle_mesh, 
@@ -79,111 +121,190 @@ if args.paraview or args.trace:
     mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
     fe = FiniteElement(mesh=mesh, vec=3, dim=3, ele_type=ele_type, gauss_order=None, dirichlet_bc_info=None) # just for saving visual data (.vtu)
 
-
     # Load and Convert Data
     logger.debug('Loading data...')
 
-    with open(os.path.join(dir, args.data_folder, 'Simulation_Info.json'), 'r') as f:
+    with open(meta_file, 'r') as f:
         sim_info = json.load(f)
+    traj_len = sim_info['traj_len']
 
-    num_sim = sim_info['num_sim']
-    num_steps = sim_info['num_steps']
-    test_sims = onp.array(sim_info['test_idx'])
-
-    with h5py.File(truth_path, 'r') as f:
-        X = f['X'][:] 
+    with h5py.File(data_file, 'r') as f:
+        X = f['X'][:]
         U = f['U'][:]
 
-    X, U = X[test_sims,:,:] , U[test_sims,:,:]
-    X_te = onp.load(test_path)
+    # Normalize
+    logger.debug('Normalizing data on [-1, 1]...')
+    X_n, U_n, scale = normalize(X, U)
 
+    # Run testing evaluation
+
+    #TODO: change evaluate model function from PyTorch
+
+    logger.debug('Running testing evaluation...')
+    X_te, U_te = X_n[test_sims,:,:] , U_n[test_sims,:,:]
+    test_set_stats = evaluate_model(model, X_te, U_te, test_sims)
+
+    X_pred    = test_set_stats['X_pred']
+    errors    = test_set_stats['errors']
+    RE        = test_set_stats['RE']
+    NRMSE     = test_set_stats['NRMSE']
+    NRMSE_sim = test_set_stats['NRMSE_sim']
+    times     = test_set_stats['times']
+    worst_sims = onp.argmax(NRMSE_sim, axis=0)
+    best_sims  = onp.argmin(NRMSE_sim, axis=0)
+
+    logger.info(f'Avg test simulation time [s]: {onp.mean(times)}')
+    logger.info(f'Std test simulation time [s]: {onp.std(times)}')
+    logger.info(f'{args.steps}-step test simulation NRMSE: {NRMSE[args.steps]}')
+
+    with open(os.path.join(metric_path, 'test_metrics.txt'), 'w') as f:
+        f.write(f'Number of test simulations: {len(times)}\n')
+        f.write(f'Mean test simulations time [s]: {onp.mean(times):.6f}\n')
+        f.write(f'Std test simulations time [s]: {onp.std(times):.6f}\n')
+        f.write(f'{args.steps}-step test simulation NRMSE: {NRMSE[args.steps]:.6f}')
 
     # Denormalize Train Data
     logger.debug('Denormalizing data...')
-    model_dict = torch.load(model_path, map_location='cuda', weights_only=False)
-    scale      = model_dict['scale']
-    X_te       = denormalize(X_te, scale['x_lo'], scale['x_rng'])
+    U_te   = denormalize(U_te,   scale['u_lo'], scale['u_rng'])
+    X_te   = denormalize(X_te,   scale['x_lo'], scale['x_rng'])
+    X_pred = denormalize(X_pred, scale['x_lo'], scale['x_rng'])
+    errors = denormalize(errors, scale['x_lo'], scale['x_rng'])
+    
+    # Save testing metrics
+    logger.debug('Saving testing metrics...')
+    with h5py.File(os.path.join(metric_path, 'test_metrics.mat'), 'w') as f:
+        f.create_dataset('X_pred', data=X_pred)
+        f.create_dataset('errors', data=errors)
+        f.create_dataset('RE', data=RE)
+        f.create_dataset('NRMSE', data=NRMSE)
+        f.create_dataset('NRMSE_sim', data=NRMSE_sim)
+        f.create_dataset('times', data=times)
+        f.create_dataset('best_sims', data=best_sims)
+        f.create_dataset('worst_sims', data=worst_sims)
 
-
-# Make .vtu Files for Paraview
-logger.debug('Making testing visualizations...')
-if args.paraview:
+    # Make .vtu Files for ParaView
+    logger.debug('Making testing visualizations...')
     for i, sim in enumerate(test_sims):
-        for j in range(100):
-            vtk_path = os.path.join(folder, args.metrics, 'sims', f'BLRAN_test_sim{sim:03d}_step{j:03d}.vtu')
-            cell_states, node_states = unpack_states(X_te[i, j, :])
-            save_sim(dir=vtk_path, fe=fe, cell_states=cell_states, node_states=node_states)
-        logger.info(f'Saved {i+1} of {len(test_sims)}')
+        for j in range(traj_len):
+            vtk_path = os.path.join(metric_path, f'{args.data_name}_test_sims', f'DMDc_{args.data_name}_test_sim{sim:03d}_step{j:03d}.vtu')
+            err_path = os.path.join(metric_path, f'{args.data_name}_test_errs', f'DMDc_{args.data_name}_errs_sim{sim:03d}_step{j:03d}.vtu')
+            cell_states, node_states = unpack_states(X_pred[i, j, :], 1600)
+            cell_errors, node_errors = unpack_states(errors[i, j, :], 1600)
+            cell_dict = [('log strain XX',    cell_states[0,:]),
+                         ('log strain XY',    cell_states[1,:]),
+                         ('log strain XZ',    cell_states[2,:]),
+                         ('log strain YY',    cell_states[3,:]),
+                         ('log strain YZ',    cell_states[4,:]),
+                         ('log strain ZZ',    cell_states[5,:]),
+                         ('Cauchy stress XX', cell_states[6,:]),
+                         ('Cauchy stress XY', cell_states[7,:]),
+                         ('Cauchy stress XZ', cell_states[8,:]),
+                         ('Cauchy stress YY', cell_states[9,:]),
+                         ('Cauchy stress YZ', cell_states[10,:]),
+                         ('Cauchy stress ZZ', cell_states[11,:])]
+            error_cell_dict = [('error log strain XX',    onp.abs(cell_errors[0,:])),
+                               ('error log strain XY',    onp.abs(cell_errors[1,:])),
+                               ('error log strain XZ',    onp.abs(cell_errors[2,:])),
+                               ('error log strain YY',    onp.abs(cell_errors[3,:])),
+                               ('error log strain YZ',    onp.abs(cell_errors[4,:])),
+                               ('error log strain ZZ',    onp.abs(cell_errors[5,:])),
+                               ('error Cauchy stress XX', onp.abs(cell_errors[6,:])),
+                               ('error Cauchy stress XY', onp.abs(cell_errors[7,:])),
+                               ('error Cauchy stress XZ', onp.abs(cell_errors[8,:])),
+                               ('error Cauchy stress YY', onp.abs(cell_errors[9,:])),
+                               ('error Cauchy stress YZ', onp.abs(cell_errors[10,:])),
+                               ('error Cauchy stress ZZ', onp.abs(cell_errors[11,:]))]
+            save_sim(dir=vtk_path, fe=fe, cell_dict=cell_dict, node_states=node_states)
+            save_sim(dir=err_path, fe=fe, cell_dict=error_cell_dict, node_states=node_errors)
 
-if args.trace:
+        logger.info(f'Saved {i+1} of {len(test_sims)}')
+    
+    # Plot cell/node time traces
+    logger.debug('Plotting reference tracking time traces...')
     assert len(args.cells)==len(args.nodes)
-    for s in args.sims:
-        for n in range(len(args.cells)):
-            sim        = test_sims[s]
-            stress_idx = (args.cells[n]+1)*12-1
-            strain_idx = (args.cells[n]+1)*12-7
-            disp_idx   = 1600*12 + (args.nodes[n]+1)*3-1
-            
-            steps = onp.arange(num_steps)
+
+    lines  = ('solid', 'dashed')
+    blues  = ('blue', 'lightblue')
+    reds   = ('red', 'pink')
+    greens = ('green', 'lightgreen')
+    blacks = ('black', 'dimgray')
+
+    for n in range(len(args.cells)):
+        for q in [args.steps, traj_len-1]:
+            if not len(args.sims)==0:
+                sims = args.sims
+            else:
+                worst_sim = worst_sims[q]
+                best_sim  = best_sims[q]
+                sims = [best_sim, worst_sim]
 
             fig, ax = plt.subplots(4, 1, figsize =(10, 12))
 
-            for i in range(4):
-                ax[i].set_xticks(onp.linspace(0, num_steps, 11, endpoint=True))
-                ax[i].set_xticklabels(onp.linspace(0, num_steps, 11, endpoint=True, dtype='int32'))
+            for i, s in enumerate(sims):
+                sim        = test_sims[s]
+                stress_idx = (args.cells[n]+1)*12-1
+                strain_idx = (args.cells[n]+1)*12-7
+                disp_idx   = 1600*12 + (args.nodes[n]+1)*3-1
+                
+                steps = onp.arange(q+1)
 
-            ax[0].plot(steps,         X[s, :, stress_idx], color='blue',       label=f'Actual z stress')
-            ax[0].plot(steps,      X_te[s, :, stress_idx], color='lightblue',  label=f'Predicted z stress')
+                for p in range(4):
+                    ax[p].set_xlim(0,q)
+                    ax[p].set_xticks(onp.linspace(0, q, 11, endpoint=True))
+                    ax[p].set_xticklabels(onp.linspace(0, q, 11, endpoint=True, dtype='int32'))
 
-            ax[1].plot(steps,         X[s, :, strain_idx], color='red',        label=f'Actual z strain')
-            ax[1].plot(steps,      X_te[s, :, strain_idx], color='pink',       label=f'Predicted z strain')
+                ax[0].plot(steps,   X_te[s, :q+1, stress_idx], color=blues[i%2],  linestyle=lines[0], label=f'Sim {sim} Actual z stress')
+                ax[0].plot(steps, X_pred[s, :q+1, stress_idx], color=blues[i%2],  linestyle=lines[1], label=f'Sim {sim} Predicted z stress')
 
-            ax[2].plot(steps,         X[s, :, disp_idx],   color='green',      label=f'Actual z displacement')
-            ax[2].plot(steps,      X_te[s, :, disp_idx],   color='lightgreen', label=f'Predicted z displacement')
+                ax[1].plot(steps,   X_te[s, :q+1, strain_idx], color=reds[i%2],   linestyle=lines[0], label=f'Sim {sim} Actual z strain')
+                ax[1].plot(steps, X_pred[s, :q+1, strain_idx], color=reds[i%2],   linestyle=lines[1], label=f'Sim {sim} Predicted z strain')
 
-            ax[3].plot(steps[:-1],    U[s, :, :],          color='black',      label='Vertical Displacement')
+                ax[2].plot(steps,   X_te[s, :q+1, disp_idx],   color=greens[i%2], linestyle=lines[0], label=f'Sim {sim} Actual z displacement')
+                ax[2].plot(steps, X_pred[s, :q+1, disp_idx],   color=greens[i%2], linestyle=lines[1], label=f'Sim {sim} Predicted z displacement')
 
-            plt.xlabel(f'Step', fontsize=20)
+                ax[3].plot(steps[:-1], U_te[s, :q, :],       color=blacks[i%2], linestyle=lines[0], label=f'Sim {sim} Vertical Displacement')
 
-            for i in range(4):
-                ax[i].legend()
-                ax[i].minorticks_on()
-            
-            ax[0].set_title(f'Simulation {sim} Cell {args.cells[n]} Node {args.nodes[n]} Tracking', fontsize=20)
-            ax[0].set_ylabel(f'Stress [MPa]', fontsize=20)
-            ax[1].set_ylabel(f'Strain', fontsize=20)
-            ax[2].set_ylabel(f'Displacement', fontsize=20)
-            ax[3].set_ylabel(f'Input', fontsize=20)
+                plt.xlabel(f'Step', fontsize=20)
 
-            plt.tight_layout()
-            fig.savefig(os.path.join(folder, args.metrics, 'pics', f'BLRAN Sim {sim} Cell {args.cells[n]} Node {args.nodes[n]} Tracking.png'))
+                for i in range(4):
+                    ax[i].legend()
+                    ax[i].minorticks_on()
+                    
+                ax[0].set_title(f'Cell {args.cells[n]} Node {args.nodes[n]} Tracking', fontsize=20)
+                ax[0].set_ylabel(f'Stress [MPa]', fontsize=20)
+                ax[1].set_ylabel(f'Strain', fontsize=20)
+                ax[2].set_ylabel(f'Displacement', fontsize=20)
+                ax[3].set_ylabel(f'Input', fontsize=20)
 
-if args.ablation:
-    num_train = [3, 6, 12, 24, 49, 98, 196, 392, 784]
-    folders = [os.path.join(folder, 'metrics_trainfrac_0.004'),
-               os.path.join(folder, 'metrics_trainfrac_0.007'),
-               os.path.join(folder, 'metrics_trainfrac_0.013'),
-               os.path.join(folder, 'metrics_trainfrac_0.025'),
-               os.path.join(folder, 'metrics_trainfrac_0.05'),
-               os.path.join(folder, 'metrics_trainfrac_0.1'),
-               os.path.join(folder, 'metrics_trainfrac_0.2'),
-               os.path.join(folder, 'metrics_trainfrac_0.4'),
-               os.path.join(folder, 'metrics_trainfrac_0.8')]
+                plt.tight_layout()
+                fig.savefig(os.path.join(metric_path, f'DMDc Cell {args.cells[n]}, Node {args.nodes[n]} Tracking ({q} steps).png'))
 
-    MSEs = []
-    for idx, f in enumerate(folders):
-        json_path = os.path.join(f, 'Testing_Info.json')
-        with open(json_path, 'r') as file:
-            info = json.load(file)
-        MSEs.append(float(info['MSE']))
+    logger.debug('Plotting RE and NRMSE distributions...')
+    plt.style.use('_mpl-gallery')
 
-    fig, ax = plt.subplots(figsize =(10, 7))
-    ax.scatter(num_train, MSEs, marker='*', s=500, color='gold', edgecolor='orange')
-    ax.set_xlabel('Number of Training Sims')
-    ax.set_xscale('log')
-    ax.set_ylabel('Testing MSE')
-    ax.set_title('BLRAN Data Ablation Study')
+    colors = ('darkgray', 'purple')
+    types = ('Instantaneous', 'Cumulative')
+    errs = ('Relative Error', 'NRMSE')
 
-    plt.tight_layout()
-    fig.savefig(os.path.join(folder, f'BLRAN Data Ablation Study.png'))
-    plt.show()
+    for scale in ['log', 'linear']:
+        for i, data in enumerate([RE, NRMSE_sim]):
+            for step in [args.steps, traj_len-1]:
+                fig, ax = plt.subplots(figsize =(10, 7))
+                bp = ax.boxplot(data[:, :step+1], patch_artist=True, positions=list(range(step+1)),
+                                boxprops     = dict(facecolor=colors[i], color='black'), 
+                                capprops     = dict(color='black'),
+                                whiskerprops = dict(color='black'),
+                                flierprops   = dict(color='black', markeredgecolor='black'),
+                                medianprops  = dict(color='black'),
+                                showfliers = True)
+                ax.set_xticks(onp.linspace(0, step, 11, endpoint=True))
+                ax.set_xticklabels(onp.linspace(0, step, 11, endpoint=True, dtype='int32'))
+                plt.minorticks_on()
+                plt.xlabel(f'Snapshot Number', fontsize=20)
+                plt.ylabel(errs[i], fontsize=20)
+                plt.yscale(scale)
+                plt.title(f'{types[i]} Testing Errors', fontsize=20)
+                plt.tight_layout()
+                fig.savefig(os.path.join(metric_path, f'Testing Error Propagation {step} steps ({types[i]}, {scale} scale).png'))
+
+plt.close('all')
