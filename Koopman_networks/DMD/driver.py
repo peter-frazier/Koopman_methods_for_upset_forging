@@ -36,12 +36,12 @@ def evaluate_model(A, B, X, U, sims):
     @jax.jit
     def linear_simulation(A, B, x0, us):
         x_hat = jnp.zeros(shape=(x0.shape[0], us.shape[1]+1), dtype=jnp.float32)
-        x_hat = x_hat.at[:, 0].set(x0)
+        x_hat = x_hat.at[:, :1].set(x0)
         x_now = x0
 
-        for i, disp in enumerate(us.T):
-            x_next = A@x_now + B@disp
-            x_hat = x_hat.at[:,i+1].set(x_next)
+        for i in range(len(us.T)):
+            x_next = A@x_now + B@us[:, i:i+1]
+            x_hat = x_hat.at[:,i+1:i+2].set(x_next)
             x_now = x_next
 
         return x_hat
@@ -65,7 +65,7 @@ def evaluate_model(A, B, X, U, sims):
         logger.debug(f'Ran linear simulation {i+1} of {len(sims)} in {end-start} seconds')
         times.append(end-start)
 
-        X_pred[i, :, :] = x_hat
+        X_pred[i, :, :] = x_hat.T
 
     X = X
     errors = X - X_pred
@@ -107,6 +107,7 @@ if __name__ == "__main__":
                         help='number of trajectories used for testing')
     parser.add_argument('--shift_frac', type=float, default=0.,
                         help='fraction of trajectories to shift to get different sets')
+    parser.add_argument('--steps',      type=int,   default=10)
 
     parser.add_argument('--seed',       type=int,   default=0)
     parser.add_argument('--device',     type=str,   default='cpu')
@@ -179,11 +180,11 @@ if __name__ == "__main__":
         logger.info('Lifting data...')
         X_lift = lift_function(X)
         Y_lift = lift_function(Y)
-        n_z, _ = X_lift.shape
 
         X_lift = dataset_for_DMD(X_lift)
         Y_lift = dataset_for_DMD(Y_lift)
         U      = dataset_for_DMD(U)
+        n_z, _ = X_lift.shape
 
         logger.info('Condensing data...')
         G = np.vstack((X_lift, U))@np.vstack((X_lift, U)).T
@@ -199,9 +200,9 @@ if __name__ == "__main__":
 
     t0 = time.time()
 
-    X_dict = X_tr[train_sims, :-1, :]
-    Y_dict = X_tr[train_sims, 1:, :]
-    U_dict = U_tr[train_sims, :, :]
+    X_dict = X_tr[:, :-1, :]
+    Y_dict = X_tr[:, 1:, :]
+    U_dict = U_tr[:, :, :]
     A, B = DMDc_model(X_dict, Y_dict, U_dict)
 
     train_time = time.time() - t0
