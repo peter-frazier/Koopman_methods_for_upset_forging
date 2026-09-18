@@ -60,5 +60,6 @@
 
 !/Koopman_networks/DMD/driver.py
 !/Koopman_networks/DMD/read_dataset.py
+!/Koopman_networks/DMD/model.py
 !/Koopman_networks/DMD/figures.py
 !/Koopman_networks/DMD/README.md

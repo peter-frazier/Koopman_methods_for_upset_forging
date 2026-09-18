@@ -3,19 +3,19 @@ sys.path.insert(0, "/users/PAS3353/peterfrazier/Koopman_methods_for_upset_forgin
 
 import argparse
 import os
-import jax
 import time
 import h5py
 import json
 import numpy as np
-import jax.numpy as jnp
+import torch
 from scipy.io import savemat
 from jax_fem_checkpoint import logger
 
+from model import DMDc
 from read_dataset import normalize
 
 
-def evaluate_model(A, B, X, U, sims):
+def evaluate_model(model, X, U, sims, device='cpu'):
     '''
     INPUTS
     model: PyTorch model to be evaluated
@@ -33,41 +33,33 @@ def evaluate_model(A, B, X, U, sims):
     times: list of simulation runtimes
     '''
 
-    @jax.jit
-    def linear_simulation(A, B, x0, us):
-        x_hat = jnp.zeros(shape=(x0.shape[0], us.shape[1]+1), dtype=jnp.float32)
-        x_hat = x_hat.at[:, :1].set(x0)
-        x_now = x0
-
-        for i in range(len(us.T)):
-            x_next = A@x_now + B@us[:, i:i+1]
-            x_hat = x_hat.at[:,i+1:i+2].set(x_next)
-            x_now = x_next
-
-        return x_hat
-
     n_traj, traj_len, n_x = X.shape
     X_pred    = np.zeros(shape=X.shape, dtype=np.float32)
     times = []
 
-    A = jnp.asarray(A)
-    B = jnp.asarray(B)
+    with torch.no_grad():
+        for i, sim in enumerate(sims):
+            start = time.time()
 
-    for i, sim in enumerate(sims):
-        start = time.time()
+            if device == 'cpu':
+                x0 = X[i, :1, :]
+                us = U[i, : , :].unsqueeze(0)
+            else:
+                x0 = X[i, :1, :].cuda()
+                us = U[i, : , :].unsqueeze(0).cuda()
 
-        x0 = jnp.asarray(X[i, :1, :].T) # (n_x, 1)
-        us = jnp.asarray(U[i, : , :].T) # (1, traj_len - 1)
+            x_preds = model.rollout(x0, us)
+            x_hat   = torch.cat(
+                [x0] + [x for x in x_preds], dim=0
+            ).cpu().detach().numpy()
 
-        x_hat = linear_simulation(A, B, x0, us)
+            end = time.time()
+            logger.debug(f'Ran linear simulation {i+1} of {len(sims)} in {end-start} seconds')
+            times.append(end-start)
 
-        end = time.time()
-        logger.debug(f'Ran linear simulation {i+1} of {len(sims)} in {end-start} seconds')
-        times.append(end-start)
+            X_pred[i, :, :] = x_hat.squeeze()
 
-        X_pred[i, :, :] = x_hat.T
-
-    X = X
+    X = X.cpu().detach().numpy()
     errors = X - X_pred
     RE = np.linalg.norm(errors, axis=2)/np.linalg.norm(X, axis=2)
 
@@ -99,7 +91,7 @@ if __name__ == "__main__":
     # Data
     parser.add_argument('--data_name',    default='Isothermal_Plasticity',
                         help='label used for data in folder')
-    parser.add_argument('--train_num', type=int, default=210,
+    parser.add_argument('--train_num', type=int, default=500,
                         help='number of trajectories used for training')
     parser.add_argument('--valid_num', type=int, default=30,
                         help='number of trajectories used for validation')
@@ -160,7 +152,7 @@ if __name__ == "__main__":
     valid_sims = sims[n_test+n_train:n_test+n_train+n_valid]
     X_tr, U_tr = X_n[train_sims,:,:], U_n[train_sims,:,:]
     X_va, U_va = X_n[valid_sims,:,:], U_n[valid_sims,:,:]
-
+    
     # -- Train ---------------------------------------------------------------------
 
     # Implementation of Koopman lifting
@@ -168,22 +160,20 @@ if __name__ == "__main__":
         lift_data = data # identity lifting function
         return lift_data
 
-    def dataset_for_DMD(arr):
+    def dataset_for_DMDc(arr):
         _, _, dim = arr.shape
         arr = np.transpose(arr) # dim, traj_length - 1, n_traj
         arr = np.reshape(arr, shape=(dim, -1), order='C')
         return arr
 
     def DMDc_model(X, Y, U):
-        n_traj, _, n_x = X.shape # n_traj, traj_length - 1, dim
-
         logger.info('Lifting data...')
         X_lift = lift_function(X)
         Y_lift = lift_function(Y)
 
-        X_lift = dataset_for_DMD(X_lift)
-        Y_lift = dataset_for_DMD(Y_lift)
-        U      = dataset_for_DMD(U)
+        X_lift = dataset_for_DMDc(X_lift)
+        Y_lift = dataset_for_DMDc(Y_lift)
+        U      = dataset_for_DMDc(U)
         n_z, _ = X_lift.shape
 
         logger.info('Condensing data...')
@@ -209,13 +199,23 @@ if __name__ == "__main__":
 
     metrics_dir = os.path.join(os.path.dirname(__file__), args.out_dir)
     os.makedirs(metrics_dir, exist_ok=True)
-    model_path = os.path.join(metrics_dir, 'model.npz')
+    model_path = os.path.join(metrics_dir, 'model.pt')
     np.savez(model_path, A=A, B=B, n_x=n_x, n_u=n_u,
              train_sims=train_sims, valid_sims=valid_sims, test_sims=test_sims)
     logger.info(f'Model saved -> {model_path}  |  Training Time: {train_time:.1f} s')
 
+    # -- Model ---------------------------------------------------------------------
+
+    model   = DMDc(torch.from_numpy(A), torch.from_numpy(B))
+    n_param = sum(p.numel() for p in model.parameters())
+    logger.debug(f'DMDc | n_x={n_x}  n_u={n_u} | params={n_param:,}')
+
     # -- Evaluate ------------------------------------------------------------------
 
+    model.eval()
+
+    X_va = torch.from_numpy(X_va)
+    U_va = torch.from_numpy(U_va)
     valid_set_stats = evaluate_model(A, B, X_va, U_va, valid_sims)
     logger.info(f"Validation set {args.steps}-step NRMSE: {valid_set_stats['NRMSE'][args.steps]:.4f}")
 
