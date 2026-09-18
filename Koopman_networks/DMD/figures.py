@@ -5,9 +5,11 @@ import argparse
 import os
 import h5py
 import json
+import torch
 import numpy as onp
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
+from model import DMDc
 from read_dataset import normalize, denormalize
 from driver import evaluate_model
 from jax_fem_checkpoint.generate_mesh import cylinder_mesh_gmsh, get_meshio_cell_type, Mesh
@@ -51,25 +53,24 @@ train_file  = os.path.join(metric_path, 'train_metrics.mat')
 if args.structure or args.eigenvalues or args.prediction:
     # Load model
     logger.debug('Loading model...')
-    with onp.load(model_file) as model:
-        A          = model['A']
-        B          = model['B']
-        n_x        = model['n_x']
-        n_u        = model['n_u']
-        train_sims = model['test_sims']
-        valid_sims = model['test_sims']
-        test_sims  = model['test_sims']
+    model_dict = torch.load(model_file, map_location='cuda', weights_only=False)
+    state_dict = model_dict['state_dict']
+    args_dict  = model_dict['args']
+    n_x        = model_dict['n_x']
+    n_u        = model_dict['n_u']
+    test_sims  = model_dict['test_sims']
+    model      = DMDc(n_x, n_u)
+    model.load_state_dict(state_dict)
+    model.eval()
+    #model.to('cuda')
 
 
 if args.structure:
-
-    #TODO: Change a and b matrices from PyTorch
-
-    A_abs = onp.abs(A)
-    B_abs = onp.abs(A)
+    A = onp.abs(model.A.weight.detach().cpu().numpy())
+    B = onp.abs(model.B.weight.detach().cpu().numpy())
 
     fig1, ax1 = plt.subplots(figsize=(8,6))
-    im1 = ax1.imshow(A_abs, cmap='Blues', norm=LogNorm(vmin=1e-6, vmax=max(onp.max(A_abs),onp.max(B_abs))))
+    im1 = ax1.imshow(A, cmap='Blues', norm=LogNorm(vmin=1e-6, vmax=max(onp.max(A),onp.max(B))))
     ax1.set_title('A Matrix Pattern')
     ax1.set_xticks([])
     ax1.set_yticks([])
@@ -78,7 +79,7 @@ if args.structure:
     fig1.savefig(os.path.join(metric_path, f'A_matrix.png'))
 
     fig2, ax2 = plt.subplots(figsize=(6,6))
-    im2 = ax2.imshow(B_abs, cmap='Blues', norm=LogNorm(vmin=1e-6, vmax=max(onp.max(A_abs),onp.max(B_abs))), aspect='auto')
+    im2 = ax2.imshow(B, cmap='Blues', norm=LogNorm(vmin=1e-6, vmax=max(onp.max(A),onp.max(B))), aspect='auto')
     ax2.set_title('B Matrix Pattern')
     ax2.set_xticks([])
     ax2.set_yticks([])

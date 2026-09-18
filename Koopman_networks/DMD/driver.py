@@ -197,18 +197,24 @@ if __name__ == "__main__":
 
     train_time = time.time() - t0
 
+    # -- Model ---------------------------------------------------------------------
+
+    A = torch.from_numpy(A)
+    B = torch.from_numpy(B)
+    model   = DMDc(n_x, n_u)
+    model.A.weight.data = A
+    model.B.weight.data = B
+    n_param = sum(p.numel() for p in model.parameters())
+    logger.debug(f'DMDc | n_x={n_x}  n_u={n_u} | params={n_param:,}')
+
     metrics_dir = os.path.join(os.path.dirname(__file__), args.out_dir)
     os.makedirs(metrics_dir, exist_ok=True)
     model_path = os.path.join(metrics_dir, 'model.pt')
-    np.savez(model_path, A=A, B=B, n_x=n_x, n_u=n_u,
-             train_sims=train_sims, valid_sims=valid_sims, test_sims=test_sims)
+    torch.save({'state_dict': model.state_dict(), 'args': vars(args),
+                'scale': scale, 'n_x': n_x, 'n_u': n_u,
+                'train_sims': train_sims, 'valid_sims': valid_sims, 
+                'test_sims': test_sims,}, model_path)
     logger.info(f'Model saved -> {model_path}  |  Training Time: {train_time:.1f} s')
-
-    # -- Model ---------------------------------------------------------------------
-
-    model   = DMDc(torch.from_numpy(A), torch.from_numpy(B))
-    n_param = sum(p.numel() for p in model.parameters())
-    logger.debug(f'DMDc | n_x={n_x}  n_u={n_u} | params={n_param:,}')
 
     # -- Evaluate ------------------------------------------------------------------
 
@@ -216,7 +222,7 @@ if __name__ == "__main__":
 
     X_va = torch.from_numpy(X_va)
     U_va = torch.from_numpy(U_va)
-    valid_set_stats = evaluate_model(A, B, X_va, U_va, valid_sims)
+    valid_set_stats = evaluate_model(model, X_va, U_va, valid_sims)
     logger.info(f"Validation set {args.steps}-step NRMSE: {valid_set_stats['NRMSE'][args.steps]:.4f}")
 
     # -- Save per-run metrics -------------------------------------------------------
