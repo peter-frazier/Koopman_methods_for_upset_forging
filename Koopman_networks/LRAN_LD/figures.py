@@ -127,7 +127,7 @@ if args.structure or args.eigenvalues or args.prediction:
     model      = LRAN_LD(n_x, n_u, args_dict['n_z'], args_dict['n_h'], args_dict['activation'], args_dict['alpha'], args_dict['init_scale'])
     model.load_state_dict(state_dict)
     model.eval()
-    model.to('cuda')
+    #model.to('cuda')
 
 
 if args.structure:
@@ -218,7 +218,7 @@ if args.prediction:
     X_te, U_te = X_n[test_sims,:,:] , U_n[test_sims,:,:]
     X_te = torch.from_numpy(X_te)
     U_te = torch.from_numpy(U_te)
-    test_set_stats = evaluate_model(model, X_te, U_te, test_sims, device='cuda')
+    test_set_stats = evaluate_model(model, X_te, U_te, test_sims, device='cpu')
 
     X_pred    = test_set_stats['X_pred']
     errors    = test_set_stats['errors']
