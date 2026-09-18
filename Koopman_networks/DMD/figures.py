@@ -46,7 +46,7 @@ data_dir    = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__fil
 data_file   = os.path.join(data_dir, args.data_name+'.mat')
 meta_file   = os.path.join(data_dir, args.data_name+'.json')
 metric_path = os.path.join(os.path.dirname(__file__), args.metrics)
-model_file  = os.path.join(metric_path, 'model.npz')
+model_file  = os.path.join(metric_path, 'model.pt')
 train_file  = os.path.join(metric_path, 'train_metrics.mat')
 
 
@@ -89,6 +89,7 @@ if args.structure:
 
 
 if args.eigenvalues:
+    A = model.A.weight.detach().cpu().numpy()
     eig = onp.linalg.eigvals(A)
     onp.save(os.path.join(metric_path, 'eigenvalues.npy'), eig)
     maxi = max(onp.max(eig.real), -onp.min(eig.real), onp.max(eig.imag), -onp.min(eig.imag))
