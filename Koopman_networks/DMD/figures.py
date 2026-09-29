@@ -69,6 +69,21 @@ if args.structure:
     A = onp.abs(model.A.weight.detach().cpu().numpy())
     B = onp.abs(model.B.weight.detach().cpu().numpy())
 
+    def pixelize(A, B):
+        size = 1000
+        stride = int(onp.size(A, axis=0)/size)
+        Apix = onp.zeros((size, size), dtype=onp.float32)
+        Bpix = onp.zeros((size, 1), dtype=onp.float32)
+        
+        for i in range(size):
+            Bpix[i,:] = onp.mean(B[i*stride:(i+1)*stride,:])
+            for j in range(size):
+                Apix[i,j] = onp.mean(A[i*stride:(i+1)*stride, j*stride:(j+1)*stride])
+
+        return Apix, Bpix
+
+    A, B = pixelize(A, B)
+
     fig1, ax1 = plt.subplots(figsize=(8,6))
     im1 = ax1.imshow(A, cmap='Blues', norm=LogNorm(vmin=1e-6, vmax=max(onp.max(A),onp.max(B))))
     ax1.set_title('A Matrix Pattern')
@@ -144,7 +159,9 @@ if args.prediction:
 
     logger.debug('Running testing evaluation...')
     X_te, U_te = X_n[test_sims,:,:] , U_n[test_sims,:,:]
-    test_set_stats = evaluate_model(model, X_te, U_te, test_sims)
+    X_te = torch.from_numpy(X_te)
+    U_te = torch.from_numpy(U_te)
+    test_set_stats = evaluate_model(model, X_te, U_te, test_sims, device='cpu')
 
     X_pred    = test_set_stats['X_pred']
     errors    = test_set_stats['errors']
