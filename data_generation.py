@@ -104,7 +104,8 @@ def get_random_inputs(key):
 
 def get_initial_conditions(key):
     sol_IC = jax.random.uniform(key, shape=mesh.points.shape, minval=-args.IC_range, maxval=args.IC_range, dtype=jnp.float32)
-    return sol_IC
+    a3_init = jax.random.uniform(key, shape=(len(mesh.cells), 8), minval=0., maxval=0.05, dtype=jnp.float32)
+    return sol_IC, a3_init
 
 # -- Simulation -----------------------------------------------------------------
 
@@ -123,7 +124,7 @@ def runSimulations(key):
     for i in range(n_traj):
         # Initialize random displacements 
         disps  = get_random_inputs(keys[i])       #(traj_len,)
-        sol_IC = get_initial_conditions(keys[i])  #(n_nodes, dim)
+        sol_IC, a3_init = get_initial_conditions(keys[i])  #(n_nodes, dim)
 
         # Problem definition
         location_fns = [bottom, top]
@@ -131,7 +132,8 @@ def runSimulations(key):
         vecs = [2, 2]
         dirichlet_bc_info = [location_fns, vecs, value_fns]
 
-        int_vars = problem.internal_vars
+        a1, a2, a3, a4, a5, a6 = vars_init
+        int_vars = (a1, a2, a3_init, a4, a5, a6)
         rho_ini = jnp.array([1.,1.,1.,1.]) # dummy parameter
         sol = sol_IC                       # for initial guess
         int_vars = problem.update_int_vars_gp(sol, int_vars) # update sigmas, log strains based on IC
@@ -277,6 +279,8 @@ if __name__ == "__main__":
                                    sig0=args.sig0,
                                    Q=args.Q,
                                    b=args.b)
+
+    vars_init = problem.internal_vars
 
     logger.info(f'\nRunning {n_traj} simulations of length {traj_len}'
                 f'\n E [MPa]: {args.E}'
