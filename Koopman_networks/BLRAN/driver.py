@@ -83,22 +83,36 @@ def evaluate_model(model, X, U, sims, device='cpu'):
 
     X = X.cpu().detach().numpy()
     errors = X - X_pred
-    RE = np.linalg.norm(errors, axis=2)/np.linalg.norm(X, axis=2)
 
     NRMSE_sim = np.zeros(shape=(n_traj, traj_len), dtype=np.float32)
     NRMSE     = np.zeros(shape=(traj_len,), dtype=np.float32)
+    MAPE = np.zeros(shape=(traj_len,), dtype=np.float32)
+    R_square = np.zeros(shape=(traj_len,), dtype=np.float32)
+
+    v1norm = np.linalg.norm(X, ord=1, axis=2)
+    v2norm = np.linalg.norm(X, ord=2, axis=2)
+    e1norm = np.linalg.norm(errors, ord=1, axis=2)
+    e2norm = np.linalg.norm(errors, ord=2, axis=2)
+
+    RE = e2norm/v2norm
+
     for i in range(traj_len):
-        vnorm = np.linalg.norm(X[:,:i+1,:], axis=2)      #(n_traj, i)
-        enorm = np.linalg.norm(errors[:,:i+1,:], axis=2) #(n_traj, i)
-        NRMSE_sim[:, i] = (np.sum(enorm**2, axis=1)/np.sum(vnorm**2, axis=1))**0.5 #(n_traj,)
-        NRMSE[i]        = (np.sum(enorm**2)/np.sum(vnorm**2))**0.5 #(,)
+
+        mean = np.mean(X[:, :i+1, :], axis=(0,1))
+        MAPE[i] = np.sum(e1norm[:, :i+1])/np.sum(v1norm[:, :i+1])
+        R_square[i] = 1. - np.sum(e2norm[:, :i+1]**2)/np.sum(np.linalg.norm(X[:, :i+1, :] - mean)**2)
+
+        NRMSE_sim[:, i] = (np.sum(e2norm[:,:i+1]**2, axis=1)/np.sum(v2norm**2, axis=1))**0.5 #(n_traj,)
+        NRMSE[i]        = (np.sum(e2norm**2)/np.sum(v2norm**2))**0.5 #(,)
 
     run_stats = {
         'X_pred': X_pred,
         'errors': errors,
+        'MAPE': MAPE,
         'RE': RE,
         'NRMSE_sim': NRMSE_sim,
         'NRMSE': NRMSE,
+        'R_square': R_square,
         'times': np.array(times, dtype=np.float32)
     }
     return run_stats
@@ -258,6 +272,10 @@ if __name__ == "__main__":
         'test_sims': test_sims,
         'training_time': np.array([train_time], dtype=np.float32),
         'valid_RE': valid_set_stats['RE'],
+        'valid_MAPE': valid_set_stats['MAPE'],
+        'step_MAPE': valid_set_stats['MAPE'][args.steps],
+        'valid_R_square': valid_set_stats['R_square'],
+        'step_R_square': valid_set_stats['R_square'][args.steps],
         'valid_NRMSE_sim': valid_set_stats['NRMSE_sim'],
         'valid_NRMSE': valid_set_stats['NRMSE'],
         'step_NRMSE': valid_set_stats['NRMSE'][args.steps],
