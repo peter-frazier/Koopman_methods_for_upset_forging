@@ -166,6 +166,8 @@ if args.prediction:
     X_pred    = test_set_stats['X_pred']
     errors    = test_set_stats['errors']
     RE        = test_set_stats['RE']
+    MAPE      = test_set_stats['MAPE']
+    R_square  = test_set_stats['R_square']
     NRMSE     = test_set_stats['NRMSE']
     NRMSE_sim = test_set_stats['NRMSE_sim']
     times     = test_set_stats['times']
@@ -195,6 +197,8 @@ if args.prediction:
         f.create_dataset('X_pred', data=X_pred)
         f.create_dataset('errors', data=errors)
         f.create_dataset('RE', data=RE)
+        f.create_dataset('R_square', data=R_square)
+        f.create_dataset('MAPE', data=MAPE)
         f.create_dataset('NRMSE', data=NRMSE)
         f.create_dataset('NRMSE_sim', data=NRMSE_sim)
         f.create_dataset('times', data=times)
