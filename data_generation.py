@@ -51,9 +51,9 @@ parser.add_argument('--n_traj',     type=int,   default=1000,
                     help='number of trajectories to generate')
 parser.add_argument('--traj_len',   type=int,   default=101,
                     help='number of snapshots per trajectory')
-parser.add_argument('--disp_range', type=float, default=0.01,
+parser.add_argument('--disp_range', type=float, default=0.02,
                     help='bounds of relative displacement')
-parser.add_argument('--IC_range',   type=float, default=4e-4,
+parser.add_argument('--IC_range',   type=float, default=1e-3,
                     help='bounds of nodal IC displacement')
 parser.add_argument('--seed',       type=int,   default=101)
 
