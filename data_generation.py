@@ -121,6 +121,12 @@ def runSimulations(key):
     alpha = onp.zeros((n_traj, traj_len, len(mesh.cells)), dtype=onp.float32)  # alpha hardening parameter (currently unused)
     times = onp.zeros((n_traj,), dtype=onp.float32)                  # time to run through inputs
 
+    with h5py.File(os.path.join(data_dir, args.data_name+'.mat'), 'w') as f:
+        f.create_dataset('X', data=X)
+        f.create_dataset('U', data=U)
+        f.create_dataset('alpha', data=alpha)
+        f.create_dataset('times', data=times)
+
     for i in range(n_traj):
         # Initialize random displacements 
         disps  = get_random_inputs(keys[i])       #(traj_len,)
@@ -216,6 +222,12 @@ def runSimulations(key):
         # Add simulation data to snapshot collections
         U[i, :, :] = jnp.expand_dims(disps[1:], axis=1)
         X[i, :, :] = sim_snapshots
+
+        with h5py.File(os.path.join(data_dir, args.data_name+'.mat'), 'r+') as f:
+            f['X'][i, :, :] = sim_snapshots
+            f['U'][i, :, :] = jnp.expand_dims(disps[1:], axis=1)
+            f['alpha'][i, :, :] = alpha[i, :, :]
+            f['times'][i] = times[i]
 
     end_date = time.strftime('%B %d %Y %-I:%M:%S %p')
 
