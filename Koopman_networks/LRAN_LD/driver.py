@@ -100,10 +100,10 @@ def evaluate_model(model, X, U, sims, device='cpu'):
 
         mean = np.mean(X[:, :i+1, :], axis=(0,1))
         MAPE[i] = np.sum(e1norm[:, :i+1])/np.sum(v1norm[:, :i+1])
-        R_square[i] = 1. - np.sum(e2norm[:, :i+1]**2)/np.sum(np.linalg.norm(X[:, :i+1, :] - mean)**2)
+        R_square[i] = 1. - np.sum(e2norm[:,:i+1]**2)/np.sum(np.linalg.norm(X[:, :i+1, :] - mean)**2)
 
-        NRMSE_sim[:, i] = (np.sum(e2norm[:,:i+1]**2, axis=1)/np.sum(v2norm**2, axis=1))**0.5 #(n_traj,)
-        NRMSE[i]        = (np.sum(e2norm**2)/np.sum(v2norm**2))**0.5 #(,)
+        NRMSE_sim[:, i] = (np.sum(e2norm[:,:i+1]**2, axis=1)/np.sum(v2norm[:,:i+1]**2, axis=1))**0.5 #(n_traj,)
+        NRMSE[i]        = (np.sum(e2norm[:,:i+1]**2)/np.sum(v2norm[:,:i+1]**2))**0.5 #(,)
 
     run_stats = {
         'X_pred': X_pred,
