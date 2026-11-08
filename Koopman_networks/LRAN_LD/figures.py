@@ -22,7 +22,7 @@ from jax_fem_checkpoint.fe_new import FiniteElement
 parser = argparse.ArgumentParser(description='LRAN_LD figures')
 
 # Folders
-parser.add_argument('--data_name',    default='Isothermal_Plasticity',        help='data being processed')
+parser.add_argument('--data_name',    default='15-5PH_SS_682C',        help='data being processed')
 parser.add_argument('--metrics',      default='metrics',                      help='folder containing data metrics')
 
 # Visuals Details
@@ -55,29 +55,22 @@ train_file  = os.path.join(metric_path, 'train_metrics.mat')
 if args.ablation:
     dict = {}
 
-    for tfac in [0.004, 0.007, 0.013, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8]:
+    for tnum in [3, 6, 12, 25, 50, 100, 200, 400, 800]:
         for sfac in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-            file_path = os.path.join(os.path.dirname(__file__), f'metrics_lran_ld_15-5PH_SS_682C_ablation_tfac{tfac}_sfac{sfac}_gid1.0_gfwd1.0_glat1.0_geig0.0_seed0', 'train_metrics.mat')
+            file_path = os.path.join(os.path.dirname(__file__), f'metrics_lran_ld_15-5PH_SS_682C_ablation_tnum{tnum}_sfac{sfac}_gid1.0_gfwd1.0_glat1.0_geig0.0_seed0', 'train_metrics.mat')
             if os.path.exists(file_path):
                 metrics = loadmat(file_path)
-                NRMSE = float(metrics['step_NRMSE'])
-                n_train = int(metrics['n_train'])
+                NRMSE = float(metrics['step_NRMSE'].item())
+                n_train = int(metrics['n_train'].item())
 
                 if n_train in list(dict.keys()):
                     dict[n_train].append(NRMSE)
                 else:
                     dict[n_train] = [NRMSE]
-
-    for key in list(dict.keys()):
-        dict[key] = sum(dict[key])/len(dict[key])
-
-    n_trains = list(dict.keys())
-    NRMSEs = list(dict.values())
-
+    print(dict[6])
     fig, ax = plt.subplots(figsize =(10, 7))
-    ax.scatter(n_trains, NRMSEs, marker='o', s=200, color='gold')
+    ax.boxplot(dict.values(), tick_labels=dict.keys())
     ax.set_xlabel('Number of Training Trajectories')
-    ax.set_xscale('log')
     ax.set_ylabel('Validation Set NRMSE')
     ax.set_title('LRAN-LD Data Ablation Study')
 
@@ -240,6 +233,8 @@ if args.prediction:
         f.write(f'Mean test simulations time [s]: {onp.mean(times):.6f}\n')
         f.write(f'Std test simulations time [s]: {onp.std(times):.6f}\n')
         f.write(f'{args_dict["steps"]}-step test simulation NRMSE: {NRMSE[args_dict["steps"]]:.6f}')
+        f.write(f'{args_dict["steps"]}-step test simulation MAPE: {MAPE[args_dict["steps"]]:.6f}')
+        f.write(f'{args_dict["steps"]}-step test simulation R_square: {R_square[args_dict["steps"]]:.6f}')
 
     # Denormalize Train Data
     logger.debug('Denormalizing data...')
