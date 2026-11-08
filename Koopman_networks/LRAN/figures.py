@@ -229,9 +229,9 @@ if args.prediction:
         f.write(f'Number of test simulations: {len(times)}\n')
         f.write(f'Mean test simulations time [s]: {onp.mean(times):.6f}\n')
         f.write(f'Std test simulations time [s]: {onp.std(times):.6f}\n')
-        f.write(f'{args_dict["steps"]}-step test simulation NRMSE: {NRMSE[args_dict["steps"]]:.6f}')
-        f.write(f'{args_dict["steps"]}-step test simulation MAPE: {MAPE[args_dict["steps"]]:.6f}')
-        f.write(f'{args_dict["steps"]}-step test simulation R_square: {R_square[args_dict["steps"]]:.6f}')
+        f.write(f'{args_dict["steps"]}-step test simulation NRMSE: {NRMSE[args_dict["steps"]]:.6f}\n')
+        f.write(f'{args_dict["steps"]}-step test simulation MAPE: {MAPE[args_dict["steps"]]:.6f}\n')
+        f.write(f'{args_dict["steps"]}-step test simulation R_square: {R_square[args_dict["steps"]]:.6f}\n')
 
     # Denormalize Train Data
     logger.debug('Denormalizing data...')
